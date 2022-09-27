@@ -11,7 +11,8 @@ Download from https://github.com/jeff303/kc-repl
 ## Usage
 
 ### Clojure REPL
-This is the most fully-featured and powerful way to run `kc-repl`.
+This is the most fully-featured and powerful way to run `kc-repl`.  You will need install the latest (1.11+) version of
+[Clojure](https://clojure.org/releases/downloads).  Then, clone this repo and run:
 
 `clojure -M:run /path/to/your/kafka.consumer.properties`
 
@@ -71,6 +72,11 @@ to the doc on using those, but for now, you can refer to the test cases for more
 
 There is an uberjar build of `kc-repl` that is capable of running basic operations using `java`.  To use this mode,
 download (or build) the uberjar, then run:
+
+`java -Dclojure.core.async.pool-size=1 -jar kc-repl-*.jar /path/to/consumer.properties`
+
+The syntax for the Java runtime is more similar to the original Kafka command line tools.  You can type `help` for a
+more complete list.
 
 ### Library
 
