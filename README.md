@@ -1,8 +1,11 @@
 # kc-repl
 
 `kc-repl` (Apache **K**afka **C**onsumer [REPL](https://en.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop)) is
-an interactive tool for exploring Apache Kafka clusters.
-
+an interactive tool for exploring Apache Kafka clusters.  It features:
+* The ability to arbitrarily subscribe to any topics/partitions in the cluster (and remove those assignments)
+* The ability to jump around to different offsets at will (either in relative terms, absolute terms, or by consuming
+    the data and evaluating a predicate)
+* The ability to provide arbitrary map and reduce functions over the records over any polling based operation
 
 ## Installation
 
