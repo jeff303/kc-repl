@@ -89,9 +89,9 @@
 
 ;; write a function that takes in record-handling args and returns a function that will
 (defn- record-handling-opts>record-handler-fn
-  "For the given `msg-handling` map or string, return a function that will be used to map each ConsumerRecord to
-  some `mapped-record`.  `mapped-record` can be any arbitrary object (probably a Clojure data structure) that will then
-  be passed along in the transduction pipeline to the filter, map, and reduce functions.
+  "For the given `msg-record-handling-opts>` map or string, return a function that will be used to map each
+  ConsumerRecord to some `mapped-record`.  `mapped-record` can be any arbitrary object (probably a Clojure data
+  structure) that will then be passed along in the transduction pipeline to the filter, map, and reduce functions.
 
   If ::reducing-fn is included in record-handling-opts, it will be used as the reducing fn in the transduction."
   [record-handling-opts]
@@ -519,17 +519,17 @@
   (metrics [this])
   (list-topics [this])
   (print-assignments [this])
-  (read-from [this topic part offset num-msg msg-format])
-  (last-read [this msg-format])
+  (read-from [this topic part offset num-msg record-handling-opts])
+  (last-read [this record-handling-opts])
   (assign [this topic part offset])
   (seek [this offset])
   (seek+ [this offset+])
   (seek- [this offset-])
-  (seek-while [this while-fn msg-format])
-  (seek-until [this until-fn msg-format])
+  (seek-while [this while-fn record-handling-opts])
+  (seek-until [this until-fn record-handling-opts])
   (pause [this topic part])
   (resume [this topic part])
-  (poll [this num-msg msg-format])
+  (poll [this num-msg record-handling-opts])
   (stop [this])
   (current-assignments [this]))
 
@@ -544,11 +544,11 @@
     (list-topics* to-consumer-chan from-consumer-chan))
   (print-assignments [kcrc]
     (print-assignments* (current-assignments kcrc)))
-  (read-from [_ topic part offset num-msg msg-format]
+  (read-from [_ topic part offset num-msg record-handling-opts]
     (read-from* to-consumer-chan from-consumer-chan active-assignments-atom last-read-records-atom topic part
-                (record-handling-opts->poll-xf-args msg-format) offset num-msg))
-  (last-read [_ msg-format]
-    (last-read* last-read-records-atom msg-format))
+                (record-handling-opts->poll-xf-args record-handling-opts) offset num-msg))
+  (last-read [_ record-handling-opts]
+    (last-read* last-read-records-atom record-handling-opts))
   (assign [_ topic part offset]
     (assign! to-consumer-chan from-consumer-chan active-assignments-atom topic part offset))
   (seek [_ offset]
@@ -560,25 +560,29 @@
   (seek- [_ offset-]
     (seek! to-consumer-chan from-consumer-chan {::active-assignments-atom active-assignments-atom
                                                 ::backward-by offset-}))
-  (seek-while [_ while-fn msg-format]
-    (seek! to-consumer-chan from-consumer-chan {::active-assignments-atom active-assignments-atom
-                                                ::while-fn while-fn
-                                                ::poll-xf-args (record-handling-opts->poll-xf-args msg-format)}))
-  (seek-until [_ until-fn msg-format]
-    (seek! to-consumer-chan from-consumer-chan {::active-assignments-atom active-assignments-atom
-                                                ::until-fn until-fn
-                                                ::poll-xf-args (record-handling-opts->poll-xf-args msg-format)}))
+  (seek-while [_ while-fn record-handling-opts]
+    (seek! to-consumer-chan
+           from-consumer-chan
+           {::active-assignments-atom active-assignments-atom
+            ::while-fn                while-fn
+            ::poll-xf-args            (record-handling-opts->poll-xf-args record-handling-opts)}))
+  (seek-until [_ until-fn record-handling-opts]
+    (seek! to-consumer-chan
+           from-consumer-chan
+           {::active-assignments-atom active-assignments-atom
+            ::until-fn                until-fn
+            ::poll-xf-args            (record-handling-opts->poll-xf-args record-handling-opts)}))
   (pause [_ topic part]
     (pause! to-consumer-chan from-consumer-chan active-assignments-atom topic part))
   (resume [_ topic part]
     (resume! to-consumer-chan from-consumer-chan active-assignments-atom topic part))
-  (poll [_ num-msg msg-format]
+  (poll [_ num-msg record-handling-opts]
     (poll* to-consumer-chan
            from-consumer-chan
            active-assignments-atom
            last-read-records-atom
-           {::num-msg num-msg
-            ::poll-xf-args (record-handling-opts->poll-xf-args msg-format)}))
+           {::num-msg      num-msg
+            ::poll-xf-args (record-handling-opts->poll-xf-args record-handling-opts)}))
   (current-assignments [_]
     (consumer-assigments consumer active-assignments-atom))
   (stop [_]
@@ -715,10 +719,10 @@
              ^long ^{:doc "The topic partition to read from", :default 0} part
              ^long ^{:doc "The offset to start reading from", :default 0} offset
              ^long ^{:doc "The number of messages to read", :default 10} num-msg
-             ^{:doc "The format messages should be parsed in"} msg-format)
+             ^{:doc "Record handling options (see documentation)"} record-handling-opts)
       (defop ^{:doc "Read from the current active assignments"} poll kcr-client true true
              ^long ^{:doc "The number of messages to read", :default 10} num-msg
-             ^{:doc "The format messages should be parsed in"} msg-format)
+             ^{:doc "Record handling options (see documentation)"} record-handling-opts)
       (defop ^{:doc "Add a topic/partition to the active assignments"} assign kcr-client true true
              ^{:doc "The topic name to read from", ::required? true} topic
              ^long ^{:doc "The topic partition to read from", ::required? true} part
@@ -733,10 +737,10 @@
              ^long ^{:doc "The number of offsets to recede by", ::required? true} by)
       (defop ^{:doc "Seek forward in the message stream while some condition is met"} seek-while kcr-client false false
              ^{:doc "Conditional (while) function; operates on the mapped record"} while-fn
-             ^{:doc "poll args, used to parse and map the record"} poll-args)
+             ^{:doc "Record handling options (see documentation)"} record-handling-opts)
       (defop ^{:doc "Seek forward in the message stream while some condition is met"} seek-until kcr-client false false
              ^{:doc "Conditional (until) function; operates on the mapped record"} while-fn
-             ^{:doc "poll args, used to parse and map the record"} poll-args)
+             ^{:doc "Record handling options (see documentation)"} record-handling-opts)
       (defop ^{:doc "Print the last read results"} last-read kcr-client true true)
       (defop ^{:doc "Stop the client and disconnect the session"} stop kcr-client true false)
       (intern (the-ns 'user) 'help print-clj-help)

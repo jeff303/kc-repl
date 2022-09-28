@@ -56,10 +56,9 @@ user=> (list-topics)
 user=> (read-from "test-data" 0 0 5 "json")
 [{"foo" 1} {"foo" 2} {"foo" 3} {"foo" 4} {"foo" 5}]
 ;; skip forward by 20
-(seek+ 20)
-;; poll two more messages, in json format
 user=> (seek+ 20)
 :us.jeffevans.kc-repl/ok
+;; poll two more messages, in json format
 user=> (poll 2 "json")
 [{"foo" 26} {"foo" 27}]
 ;; check where we are now

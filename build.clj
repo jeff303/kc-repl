@@ -3,7 +3,7 @@
   (:require [org.corfield.build :as bb]))
 
 (def lib 'net.clojars.jeff_evans/kc-repl)
-(def version "0.1.0-SNAPSHOT")
+(def version "1.0.0")
 (def main 'us.jeffevans.kc-repl.java-main)
 
 (defn test "Run the tests." [opts]
