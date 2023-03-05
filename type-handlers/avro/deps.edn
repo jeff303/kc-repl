@@ -1,0 +1,32 @@
+{:paths ["src" "resources"]
+ :deps {io.confluent/kafka-avro-serializer {:mvn/version "7.2.1"}
+        us.jeffevans/kc-repl {:local/root "../.."}} ; TODO: is this right?
+ :mvn/repos
+ {"confluent" {:url "https://packages.confluent.io/maven/"}}
+ :aliases
+ {:build {:deps {io.github.seancorfield/build-clj
+                 {:git/tag "v0.6.3" :git/sha "9b8e09b"
+                  ;; since we're building an app uberjar, we do not
+                  ;; need deps-deploy for clojars.org deployment:
+                  :deps/root "slim"}}
+          :ns-default build}
+  :test-dependencies {:extra-paths ["test" "test-resources" "../../test"] ;TODO: fix this insanity
+                      :extra-deps {org.testcontainers/kafka {:mvn/version "1.17.3"}
+                                   org.apache.kafka/kafka-clients$test {:mvn/version "7.5.0-16-ccs"}
+                                   org.apache.kafka/kafka_2.13$test {:mvn/version "7.5.0-16-ccs"}
+                                   org.apache.kafka/kafka_2.13 {:mvn/version "7.5.0-16-ccs"}
+                                   org.apache.curator/curator-test {:mvn/version "2.9.0"}
+                                   ;; need the Maven project to pick up transitive dependencies
+                                   io.github.confluentinc/kafka-streams-examples {:git/sha "a3a1b4a528fb205ec86d2bf309431d45fb6d3e9d"}
+                                   ;; TODO: why is this needed? Apparently bringing in the root project DOES NOT bring this in
+                                   findinpath/testcontainers-kafka-avro {:local/root "../../libs/testcontainers-kafka-avro-1.0-SNAPSHOT-tests.jar"}}}
+  :test {:extra-paths ["test"]
+         :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}
+                      io.github.cognitect-labs/test-runner
+                      {:git/tag "v0.5.0" :git/sha "48c3c67"}
+                      org.testcontainers/kafka {:mvn/version "1.17.3"}}
+                      ;; this is to bring in EmbeddedSingleNodeKafkaCluster
+                      ;;io.confluent.ksql/ksqldb-test-util {:mvn/version "7.2.1"}}
+         :main-opts ["-m" "cognitect.test-runner"]
+         :exec-fn cognitect.test-runner.api/test}}}
+

@@ -7,7 +7,8 @@
   (:import (org.apache.kafka.common TopicPartition)
            (java.nio.charset StandardCharsets)))
 
-(use-fixtures :once tc/kafka-container-fixture tc/kafka-test-topics-fixture)
+
+(use-fixtures :once tc/simple-kafka-container-fixture tc/kafka-test-topics-fixture)
 
 ;; need one of these per test since they might run in parallel
 (use-fixtures :each tc/kcr-client-fixture)

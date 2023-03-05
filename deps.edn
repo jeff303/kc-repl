@@ -1,5 +1,5 @@
 {:paths ["src" "resources"]
- :deps {org.apache.kafka/kafka-clients {:mvn/version "3.1.0"}
+ :deps {org.apache.kafka/kafka-clients {:mvn/version "3.3.1"}
         org.apache.logging.log4j/log4j-core {:mvn/version "2.17.2"}
         org.apache.logging.log4j/log4j-slf4j18-impl {:mvn/version "2.17.2"}
         org.clojure/clojure {:mvn/version "1.11.1"}
@@ -8,6 +8,8 @@
         org.clojure/tools.cli {:mvn/version "1.0.206"}
         org.clojure/tools.logging {:mvn/version "1.2.4"}
         nrepl/nrepl {:mvn/version "1.0.0"}}
+ :mvn/repos
+ {"confluent" {:url "https://packages.confluent.io/maven/"}}
  :aliases
  {:run {:main-opts ["-m" "us.jeffevans.kc-repl"]
         :jvm-opts ["-Dclojure.core.async.pool-size=1"]}
@@ -17,11 +19,21 @@
                   ;; need deps-deploy for clojars.org deployment:
                   :deps/root "slim"}}
           :ns-default build}
+  :type-handlers {:extra-deps {us.jeffevans.kc-repl/avro-handler {:local/root "type-handlers/avro"}}}
+  ;; TODO: come up with better name for this alias
+  ;; I want to include the extra-paths and extra-deps so that they will be loaded by Cursive
+  ;; But if I do them under test, then I can't get the Cursive local nREPL invocation to *not*
+  ;; actually launch the test runner.  I only want it to start nREPL with these dependencies
+  :test-dependencies {:extra-paths ["test"]
+                      :extra-deps {org.testcontainers/kafka {:mvn/version "1.17.6"}
+                                   ;; TODO: figure out why the GitHub coordinate DOES NOT WORK
+                                   ;;  io.github.findinpath/testcontainers-kafka-avro {:git/sha "943ae540e8db36a7515e5b454b71c7fdd54ea4b0"}}}
+                                   findinpath/testcontainers-kafka-avro {:local/root "libs/testcontainers-kafka-avro-1.0-SNAPSHOT-tests.jar"}}}
   :test {:extra-paths ["test"]
          :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}
                       io.github.cognitect-labs/test-runner
                       {:git/tag "v0.5.0" :git/sha "48c3c67"}
-                      org.testcontainers/kafka {:mvn/version "1.17.3"}}
+                      org.testcontainers/kafka {:mvn/version "1.17.6"}}
          :main-opts ["-m" "cognitect.test-runner"]
          :exec-fn cognitect.test-runner.api/test}}}
 
