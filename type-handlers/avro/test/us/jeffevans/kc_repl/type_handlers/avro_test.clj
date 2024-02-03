@@ -9,12 +9,13 @@
            (io.confluent.kafka.schemaregistry.client CachedSchemaRegistryClient)
            (io.confluent.kafka.serializers KafkaAvroSerializer)
            (org.apache.avro Schema$Parser)
-           (org.apache.avro.generic GenericData GenericData$Record)
+           (org.apache.avro.generic GenericData$Record)
            (org.apache.kafka.clients.admin NewTopic)
            (org.apache.kafka.clients.producer KafkaProducer ProducerConfig ProducerRecord)))
 (def ^:private ^:const avro-data-topic "sensor-readings")
 
-(def test-data [{::deviceId 1, ::reading 10.0, ::timestamp 1676231420000}])
+(def test-data [{::deviceId 1, ::reading 10.0, ::timestamp 1676231420000}
+                {::deviceId 13, ::reading 17.9, ::timestamp 1676231438000}])
 
 (defn test-avro-data-fixture [f]
   (with-open [schema-reader (io/input-stream (io/resource "sensor-reading.avsc"))]
@@ -43,7 +44,7 @@
           (println insert-res)))
       (f))))
 
-(use-fixtures :once tc/kafka-with-schema-registry-docker-compose-fixture
+(use-fixtures :once tc/kafka-with-schema-registry-docker-compose-fixture-manual
                     test-avro-data-fixture)
 
 ;; need one of these per test since they might run in parallel
