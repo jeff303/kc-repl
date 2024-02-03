@@ -11,10 +11,10 @@
                   :deps/root "slim"}}
           :ns-default build}
   :test-dependencies {:extra-paths ["test" "test-resources" "../../test"] ;TODO: fix this insanity
-                      :extra-deps {org.testcontainers/kafka {:mvn/version "1.17.3"}
-                                   org.apache.kafka/kafka-clients$test {:mvn/version "7.5.0-16-ccs"}
-                                   org.apache.kafka/kafka_2.13$test {:mvn/version "7.5.0-16-ccs"}
-                                   org.apache.kafka/kafka_2.13 {:mvn/version "7.5.0-16-ccs"}
+                      :extra-deps {org.testcontainers/testcontainers {:mvn/version "1.19.4"}
+                                   org.apache.kafka/kafka-clients$test {:mvn/version "3.5.0"}
+                                   org.apache.kafka/kafka_2.13$test {:mvn/version "3.5.0"}
+                                   org.apache.kafka/kafka_2.13 {:mvn/version "3.5.0"}
                                    org.apache.curator/curator-test {:mvn/version "2.9.0"}
                                    ;; need the Maven project to pick up transitive dependencies
                                    io.github.confluentinc/kafka-streams-examples {:git/sha "a3a1b4a528fb205ec86d2bf309431d45fb6d3e9d"}

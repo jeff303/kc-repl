@@ -30,7 +30,8 @@
 (defonce ^:private type-handler-create-fns {})
 
 (defprotocol type-handler
-  (parse-bytes [this ^String topic ^bytes b]))
+  (parse-bytes [this ^String topic ^bytes b])
+  (->clj [this obj]))
 
 (defmulti create-type-handler (fn [type* & _]
                                 type*))
@@ -62,7 +63,10 @@
 
 (defn- make-default-record-handler-fn [^String value-type type-handlers]
   (fn [^ConsumerRecord cr]
-    ((parse-type-fn-with-handlers value-type type-handlers) (.topic cr) (.value cr))))
+    (if-let [handler (get type-handlers value-type)]
+      (let [parsed (parse-bytes handler (.topic cr) (.value cr))]
+        (->clj handler parsed))
+      (throw (ex-info (format "no type handler registered for %s" value-type) {::type-handler-keys (keys type-handlers)})))))
 
 (defn- make-record-handler-fn [{:keys [::key-type ::key-parse-fn ::value-type ::value-parse-fn ::map-record-fn
                                        ::include-headers? ::include-topic? ::include-partition? ::include-offset?
@@ -161,7 +165,9 @@
       (log/debugf "Initializing consumer with a paused assignment of %s" (str part))
       (.assign consumer [part])
       (.pause consumer [part])))
-  (.poll consumer (Duration/ofMillis 0)))
+  (let [idle-records (.poll consumer (Duration/ofMillis 0))
+        partitions            (.partitions idle-records)]
+    (log/infof "got %d idle poll records" (count partitions))))
 
 (defn- consumer-offsets [^KafkaConsumer consumer]
   (reduce (fn [acc ^TopicPartition part]
@@ -529,7 +535,9 @@
 
 (extend-protocol type-handler JsonHandler
   (parse-bytes [_ _ ^bytes b]
-    (json/read-str (String. b StandardCharsets/UTF_8) :keywordize? true)))
+    (json/read-str (String. b StandardCharsets/UTF_8) :keywordize? true))
+  (->clj [_ obj] ;;TODO: figure out how to do a default impl of this one
+    obj))
 
 (defmethod create-type-handler "json" [& _] (JsonHandler.))
 
@@ -537,7 +545,9 @@
 
 (extend-protocol type-handler TextHandler
   (parse-bytes [_ _ ^bytes b]
-    (String. b StandardCharsets/UTF_8)))
+    (String. b StandardCharsets/UTF_8))
+  (->clj [_ obj]
+    obj))
 
 (defmethod create-type-handler "text" [& _] (TextHandler.))
 
@@ -634,7 +644,7 @@
   ;; construct an instance of each known type-handler here, which currently relies upon the namespace
   ;; providing it to have been required; may need to change to something more sophisticated later?
   (let [ths      (reduce-kv (fn [acc t f]
-                              (assoc acc t (f))) {} (methods create-type-handler))
+                              (assoc acc t (f config-fname-or-props))) {} (methods create-type-handler))
         consumer (cond (map? config-fname-or-props)
                        (KafkaConsumer. ^Map config-fname-or-props)
 

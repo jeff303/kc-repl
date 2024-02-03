@@ -5,7 +5,8 @@
     [us.jeffevans.kc-repl :as kcr])
   (:import (io.confluent.kafka.schemaregistry.client CachedSchemaRegistryClient SchemaRegistryClient)
            (io.confluent.kafka.serializers KafkaAvroDeserializer)
-           (java.nio.charset StandardCharsets)))
+           (org.apache.avro Schema$Field)
+           (org.apache.avro.generic GenericRecord)))
 
 (def ^:const ^:private sr-url-prop "schema.registry.url")
 
@@ -14,9 +15,17 @@
 (extend-protocol kcr/type-handler AvroHandler
   (parse-bytes [this ^String topic ^bytes b]
     (let [^KafkaAvroDeserializer d (:deser this)]
-      (.deserialize d topic b))))
+      (.deserialize d topic b)))
+  (->clj [_ ^GenericRecord obj]
+    (let [schema (.getSchema obj)
+          fields (.getFields schema)]
+      (reduce (fn [acc ^Schema$Field field]
+                (let [fnm (.name field)]
+                  (assoc acc fnm (.get obj fnm))))
+              {}
+              fields))))
 
-(defmethod kcr/create-type-handler "avro" [_ kc-props]
+(defmethod kcr/create-type-handler "avro" [kc-props & _]
   (let [sr-url (get kc-props sr-url-prop)]
     (if-not (str/blank? sr-url)
       (let [cache-sz  100

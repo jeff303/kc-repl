@@ -18,11 +18,7 @@
       },
       {
          "name":"timestamp",
-         "type":[
-            "null",
-            "long"
-         ],
-         "logicalType": "timestamp-millis",
+         "type": {"type": "long", "logicalType": "timestamp-millis"}
       }
    ]
 }
