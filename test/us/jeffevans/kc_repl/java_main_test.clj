@@ -33,6 +33,7 @@
                            "seek+ --by 2"
                            "poll --num-msg 2 --record-handling-opts json"
                            "poll --record-handling-opts json"
+                           "seek -o 0"
                            "stop"]
         line-gathering-fn (make-line-gathering-fn)]
     (with-redefs [kcrm/get-input-line   (make-line-producing-fn input-lines)
@@ -54,6 +55,7 @@
                     "test-topic:0 at 5"
                     (str "[" (str/join " " (map #(format "{\"foo\" %d}" %) (range 5 15))) "]")
                     "test-topic:0 at 15"
+                    "test-topic:0 at 0"
                     "true"] ; TODO: don't return true from last fn (::stop probably)
                    final-lines))))))))
 

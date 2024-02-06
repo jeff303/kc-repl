@@ -8,7 +8,8 @@
     [clojure.spec.alpha :as s]
     [clojure.string :as str]
     [clojure.java.io :as io]
-    [nrepl.cmdline :as n.c])
+    [nrepl.cmdline :as n.c]
+    [us.jeffevans.kc-repl.type-handler-load :as thl])
   (:import
     (java.time Duration)
     (java.util Properties Map)
@@ -66,7 +67,7 @@
     (if-let [handler (get type-handlers value-type)]
       (let [parsed (parse-bytes handler (.topic cr) (.value cr))]
         (->clj handler parsed))
-      (throw (ex-info (format "no type handler registered for %s" value-type) {::type-handler-keys (keys type-handlers)})))))
+      (throw (ex-info (format "no type handler registered for %s, a %s" value-type (type value-type)) {::type-handler-keys (keys type-handlers)})))))
 
 (defn- make-record-handler-fn [{:keys [::key-type ::key-parse-fn ::value-type ::value-parse-fn ::map-record-fn
                                        ::include-headers? ::include-topic? ::include-partition? ::include-offset?
@@ -165,9 +166,7 @@
       (log/debugf "Initializing consumer with a paused assignment of %s" (str part))
       (.assign consumer [part])
       (.pause consumer [part])))
-  (let [idle-records (.poll consumer (Duration/ofMillis 0))
-        partitions            (.partitions idle-records)]
-    (log/infof "got %d idle poll records" (count partitions))))
+  (.poll consumer (Duration/ofMillis 0)))
 
 (defn- consumer-offsets [^KafkaConsumer consumer]
   (reduce (fn [acc ^TopicPartition part]
@@ -641,24 +640,27 @@
     (.close consumer)))
 
 (defn make-kcr-client ^KCRClient [config-fname-or-props]
-  ;; construct an instance of each known type-handler here, which currently relies upon the namespace
-  ;; providing it to have been required; may need to change to something more sophisticated later?
-  (let [ths      (reduce-kv (fn [acc t f]
-                              (assoc acc t (f config-fname-or-props))) {} (methods create-type-handler))
-        consumer (cond (map? config-fname-or-props)
-                       (KafkaConsumer. ^Map config-fname-or-props)
+  (let [props (cond (map? config-fname-or-props)
+                    (doto (Properties.)
+                      (.putAll config-fname-or-props))
 
-                       (string? config-fname-or-props)
-                       (do
-                         (log/debugf "Assuming %s is a config file name; initializing consumer from that"
-                                     config-fname-or-props)
-                         (-> (doto (Properties.)
-                               (.load (io/reader config-fname-or-props)))
-                             (KafkaConsumer.)))
+                    (string? config-fname-or-props)
+                    (do
+                      (log/debugf "Assuming %s is a config file name; initializing consumer from that"
+                                  config-fname-or-props)
+                      (doto (Properties.)
+                        (.load (io/reader config-fname-or-props))))
 
-                       true
-                       (throw (ex-info "Parameter must be a map (property key/values) or a String (file path)"
-                                       {:arg config-fname-or-props})))]
+                    true
+                    (throw (ex-info "Parameter must be a map (property key/values) or a String (file path)"
+                                    {:arg config-fname-or-props})))
+        consumer (KafkaConsumer. props)
+        ;; construct an instance of each known type-handler here, which currently relies upon the namespace
+        ;; providing it to have been required; may need to change to something more sophisticated later?
+        ths (reduce-kv (fn [acc t f]
+                         (assoc acc t (f props))) {} (methods create-type-handler))]
+
+    (log/infof "starting with type handlers %s" (keys ths))
     (->KCRClient consumer (a/chan 1) (a/chan 1) (atom #{}) (atom {}) ths)))
 
 (def ^:private java-cmds
@@ -777,9 +779,7 @@
              ^long ^{:doc "The topic partition to read from", ::required? true} part
              ^long ^{:doc "The offset to start reading from", ::required? true} offset)
       (defop ^{:doc "Change the offset to poll from next for the given topic/partition"} seek kcr-client true true
-             ^{:doc "The topic name to read from", ::required? true} topic
-             ^long ^{:doc "The topic partition to read from", ::required? true} part
-             ^long ^{:doc "The offset to start reading from", ::required? true} offset)
+             ^long ^{:doc "The offset to seek to", ::required? true} offset)
       (defop ^{:doc "Increment the offset for the current assignment by the given amount"} seek+ kcr-client true true
              ^long ^{:doc "The number of offsets to advance by", ::required? true} by)
       (defop ^{:doc "Decrement the offset for the current assignment by the given amount"} seek- kcr-client true true
@@ -800,6 +800,7 @@
   `(exec-entrypoint ~config-fname ~@run-body))
 
 (defn -main [config-file & more]
+  (thl/load-type-handlers)
   (entrypoint config-file (fn [kcr-client]
                             (log/infof "Welcome to kc-repl!" (pr-str (metrics kcr-client)))
                             (n.c/-main "-i"))))

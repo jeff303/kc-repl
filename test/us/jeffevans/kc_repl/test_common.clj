@@ -4,9 +4,9 @@
             [clojure.java.io :as io]
             [us.jeffevans.kc-repl :as kcr]
             [us.jeffevans.kc-repl.test-containers :as containers])
-  (:import (com.findinpath.testcontainers SchemaRegistryContainer ZookeeperContainer)
+  (:import #_(com.findinpath.testcontainers SchemaRegistryContainer ZookeeperContainer)
            (java.io File)
-           (org.testcontainers.containers ComposeContainer KafkaContainer Network)
+           (org.testcontainers.containers #_ComposeContainer KafkaContainer Network)
            (org.apache.kafka.clients.admin Admin KafkaAdminClient NewTopic)
            (org.apache.kafka.clients.producer KafkaProducer ProducerConfig ProducerRecord)
            (clojure.lang IPersistentMap)
@@ -113,32 +113,32 @@
     (binding [*schema-registry-url* (format "http://%s:%d" (.getHost sr-cont) (.getMappedPort containers/sr-port))]
       (f))))
 
-(defn kafka-with-schema-registry-fixture
-  [^Network network f]
-  (with-open [zk-cont    (-> (ZookeeperContainer. "5.5.0")
-                             (.withNetwork network))
-              kafka-cont (-> (com.findinpath.testcontainers.KafkaContainer. "5.5.0" (.getInternalUrl zk-cont))
-                             (.withNetwork network))
-              sr-cont    (-> (SchemaRegistryContainer. "5.5.0" (.getInternalUrl zk-cont))
-                             (.withNetwork network))]
-    (.start zk-cont)
-    (.start kafka-cont)
-    (.start sr-cont)
-    ;final Properties props = new Properties();
-    ;props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaContainer.getBootstrapServers());
-    ;props.put(ProducerConfig.ACKS_CONFIG, "all");
-    ;props.put(ProducerConfig.RETRIES_CONFIG, 0);
-    ;props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-    ;props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class);
-    ;props.put(AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG,
-    ;           schemaRegistryContainer.getUrl());
-    ;props.put(KafkaAvroSerializerConfig.VALUE_SUBJECT_NAME_STRATEGY,
-    ;           TopicNameStrategy.class.getName());
-    (let [common-props {ConsumerConfig/BOOTSTRAP_SERVERS_CONFIG (.getBootstrapServers kafka-cont)}]
-      (binding [*kafka-common-props* common-props
-                *schema-registry-url* (.getUrl sr-cont)
-                *kafka-admin* (Admin/create common-props)]
-        (f)))))
+#_(defn kafka-with-schema-registry-fixture
+    [^Network network f]
+    (with-open [zk-cont    (-> (ZookeeperContainer. "5.5.0")
+                               (.withNetwork network))
+                kafka-cont (-> (com.findinpath.testcontainers.KafkaContainer. "5.5.0" (.getInternalUrl zk-cont))
+                               (.withNetwork network))
+                sr-cont    (-> (SchemaRegistryContainer. "5.5.0" (.getInternalUrl zk-cont))
+                               (.withNetwork network))]
+      (.start zk-cont)
+      (.start kafka-cont)
+      (.start sr-cont)
+      ;final Properties props = new Properties();
+      ;props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaContainer.getBootstrapServers());
+      ;props.put(ProducerConfig.ACKS_CONFIG, "all");
+      ;props.put(ProducerConfig.RETRIES_CONFIG, 0);
+      ;props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+      ;props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class);
+      ;props.put(AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG,
+      ;           schemaRegistryContainer.getUrl());
+      ;props.put(KafkaAvroSerializerConfig.VALUE_SUBJECT_NAME_STRATEGY,
+      ;           TopicNameStrategy.class.getName());
+      (let [common-props {ConsumerConfig/BOOTSTRAP_SERVERS_CONFIG (.getBootstrapServers kafka-cont)}]
+        (binding [*kafka-common-props* common-props
+                  *schema-registry-url* (.getUrl sr-cont)
+                  *kafka-admin* (Admin/create common-props)]
+          (f)))))
 
 
 
@@ -151,24 +151,24 @@
   "The schema.registry.url value that should be used with the docker-compose fixture"
   "http://localhost:8081")
 
-(defn kafka-with-schema-registry-docker-compose-fixture
-  [f]
-  (with-open [cont (doto (ComposeContainer. (into-array File [(io/file "/Users/jeff/dev/clojure/kc-repl/type-handlers/avro/test/docker-compose.yml")]))
-                     (.withLocalCompose false)
-                     (.withExposedService "kafka-broker-1" 19092 (Wait/forListeningPort)))]
-    (.start cont)
-    (let [common-props {ConsumerConfig/BOOTSTRAP_SERVERS_CONFIG "localhost:19092"
-                        ;; NOTE: this is apparently needed even when seeking (ex to offset 0)
-                        ;; that can result in
-                        ;; 2024-02-02 20:27:37 INFO  Fetcher:1400 - [Consumer clientId=consumer-kc-repl-test-1, groupId=kc-repl-test] Fetch position FetchPosition{offset=0, offsetEpoch=Optional.empty, currentLeader=LeaderAndEpoch{leader=Optional[localhost:19092 (id: 1 rack: null)], epoch=0}} is out of range for partition sensor-readings-0, resetting offset
-                        ;; on the fetch, even though offset 0 is very clearly available
-                        ;; may be a side-effect of the Docker image being used or some other factor
-                        ConsumerConfig/AUTO_OFFSET_RESET_CONFIG "earliest"
-                        sr-url-prop                             compose-fixture-sr-url}]
-      (binding [*kafka-common-props* common-props
-                *schema-registry-url* compose-fixture-sr-url
-                *kafka-admin* (Admin/create common-props)]
-        (f)))))
+#_(defn kafka-with-schema-registry-docker-compose-fixture
+    [f]
+    (with-open [cont (doto (ComposeContainer. (into-array File [(io/file "/Users/jeff/dev/clojure/kc-repl/type-handlers/avro/test/docker-compose.yml")]))
+                       (.withLocalCompose false)
+                       (.withExposedService "kafka-broker-1" 19092 (Wait/forListeningPort)))]
+      (.start cont)
+      (let [common-props {ConsumerConfig/BOOTSTRAP_SERVERS_CONFIG "localhost:19092"
+                          ;; NOTE: this is apparently needed even when seeking (ex to offset 0)
+                          ;; that can result in
+                          ;; 2024-02-02 20:27:37 INFO  Fetcher:1400 - [Consumer clientId=consumer-kc-repl-test-1, groupId=kc-repl-test] Fetch position FetchPosition{offset=0, offsetEpoch=Optional.empty, currentLeader=LeaderAndEpoch{leader=Optional[localhost:19092 (id: 1 rack: null)], epoch=0}} is out of range for partition sensor-readings-0, resetting offset
+                          ;; on the fetch, even though offset 0 is very clearly available
+                          ;; may be a side-effect of the Docker image being used or some other factor
+                          ConsumerConfig/AUTO_OFFSET_RESET_CONFIG "earliest"
+                          sr-url-prop                             compose-fixture-sr-url}]
+        (binding [*kafka-common-props* common-props
+                  *schema-registry-url* compose-fixture-sr-url
+                  *kafka-admin* (Admin/create common-props)]
+          (f)))))
 
 (defn kafka-with-schema-registry-docker-compose-fixture-manual
   [f]
