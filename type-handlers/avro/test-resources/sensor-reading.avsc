@@ -1,0 +1,24 @@
+{
+   "type":"record",
+   "name":"SensorReading",
+   "namespace":"us.jeffevans.kc-repl",
+   "fields":[
+      {
+         "name":"deviceId",
+         "type":[
+            "long"
+         ]
+      },
+      {
+         "name":"reading",
+         "type":[
+            "null",
+            "double"
+         ]
+      },
+      {
+         "name":"timestamp",
+         "type": {"type": "long", "logicalType": "timestamp-millis"}
+      }
+   ]
+}

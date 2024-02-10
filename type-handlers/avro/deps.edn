@@ -1,0 +1,27 @@
+{:paths ["src" "resources"]
+ :deps {io.confluent/kafka-avro-serializer {:mvn/version "7.2.1"}
+        us.jeffevans/kc-repl {:local/root "../.."}}
+ :mvn/repos
+ {"confluent" {:url "https://packages.confluent.io/maven/"}}
+ :aliases
+ {:build {:deps {io.github.seancorfield/build-clj
+                 {:git/tag "v0.9.2" :git/sha "9c9f078"
+                  ;; since we're building an app uberjar, we do not
+                  ;; need deps-deploy for clojars.org deployment:
+                  :deps/root "slim"}}
+          :ns-default build}
+  :test-dependencies {:extra-paths ["test" "test-resources"]
+                      :extra-deps {org.testcontainers/testcontainers {:mvn/version "1.19.4"}
+                                   org.testcontainers/kafka {:mvn/version "1.19.4"}
+                                   org.apache.kafka/kafka-clients$test {:mvn/version "3.5.0"}
+                                   org.apache.kafka/kafka_2.13$test {:mvn/version "3.5.0"}
+                                   org.apache.kafka/kafka_2.13 {:mvn/version "3.5.0"}
+                                   org.apache.curator/curator-test {:mvn/version "2.9.0"}}}
+  :test {:extra-paths ["test" "../../test"]
+         :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}
+                      io.github.cognitect-labs/test-runner
+                      {:git/tag "v0.5.0" :git/sha "48c3c67"}
+                      us.jeffevans/kc-repl$tests {:local/root "../.." :classifier "tests"}}
+         :main-opts ["-m" "cognitect.test-runner"]
+         :exec-fn cognitect.test-runner.api/test}}}
+

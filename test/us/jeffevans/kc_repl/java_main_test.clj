@@ -9,7 +9,7 @@
   (:import (java.io File)
            (java.util Properties)))
 
-(use-fixtures :once tc/kafka-container-fixture tc/kafka-test-topics-fixture)
+(use-fixtures :once tc/simple-kafka-container-fixture tc/kafka-test-topics-fixture)
 
 (defn- make-line-producing-fn [lines]
   (let [remaining-lines (atom lines)]
@@ -29,10 +29,11 @@
 
 (deftest java-main-test
   (let [input-lines       ["list-topics"
-                           "read-from --topic test-topic --part 0 --offset 0 --num-msg 1 --msg-format json"
+                           "read-from --topic test-topic --part 0 --offset 0 --num-msg 1 --record-handling-opts json"
                            "seek+ --by 2"
-                           "poll --num-msg 2 --msg-format json"
-                           "poll --msg-format json"
+                           "poll --num-msg 2 --record-handling-opts json"
+                           "poll --record-handling-opts json"
+                           "seek -o 0"
                            "stop"]
         line-gathering-fn (make-line-gathering-fn)]
     (with-redefs [kcrm/get-input-line   (make-line-producing-fn input-lines)
@@ -54,6 +55,7 @@
                     "test-topic:0 at 5"
                     (str "[" (str/join " " (map #(format "{\"foo\" %d}" %) (range 5 15))) "]")
                     "test-topic:0 at 15"
+                    "test-topic:0 at 0"
                     "true"] ; TODO: don't return true from last fn (::stop probably)
                    final-lines))))))))
 

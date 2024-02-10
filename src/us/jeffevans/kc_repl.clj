@@ -8,7 +8,8 @@
     [clojure.spec.alpha :as s]
     [clojure.string :as str]
     [clojure.java.io :as io]
-    [nrepl.cmdline :as n.c])
+    [nrepl.cmdline :as n.c]
+    [us.jeffevans.kc-repl.type-handler-load :as thl])
   (:import
     (java.time Duration)
     (java.util Properties Map)
@@ -25,6 +26,16 @@
   user-initiated polling request is made, then an empty/idle poll will occur to ensure the consumer stays alive and
   well-behaved."
   1000)
+
+
+(defonce ^:private type-handler-create-fns {})
+
+(defprotocol type-handler
+  (parse-bytes [this ^String topic ^bytes b])
+  (->clj [this obj]))
+
+(defmulti create-type-handler (fn [type* & _]
+                                type*))
 
 (defmulti parse-type
           "A multimethod to handle parsing a byte array, which can be of various ConsumerRecord key or value types"
@@ -46,18 +57,26 @@
             {}
             (.toArray headers))))
 
-(defn- make-default-record-handler-fn [^String value-type]
+(defn- parse-type-fn-with-handlers [^String type-name type-handlers]
+  (if-let [handler (get type-handlers type-name)]
+    (partial parse-bytes handler)
+    (throw (ex-info (format "no type handler registered for %s" type-name) {::type-handler-keys (keys type-handlers)}))))
+
+(defn- make-default-record-handler-fn [^String value-type type-handlers]
   (fn [^ConsumerRecord cr]
-    (parse-type value-type (.value cr))))
+    (if-let [handler (get type-handlers value-type)]
+      (let [parsed (parse-bytes handler (.topic cr) (.value cr))]
+        (->clj handler parsed))
+      (throw (ex-info (format "no type handler registered for %s, a %s" value-type (type value-type)) {::type-handler-keys (keys type-handlers)})))))
 
 (defn- make-record-handler-fn [{:keys [::key-type ::key-parse-fn ::value-type ::value-parse-fn ::map-record-fn
                                        ::include-headers? ::include-topic? ::include-partition? ::include-offset?
-                                       ::include-timestamp?] :as record-handling}]
+                                       ::include-timestamp?] :as record-handling} type-handlers]
   (let [k-parse-fn (cond (fn? key-parse-fn)
                          key-parse-fn
 
                          (some? key-type)
-                         #(parse-type key-type %)
+                         (parse-type-fn-with-handlers key-type type-handlers)
 
                          ;; by default, don't try to parse the key
                          true
@@ -66,14 +85,15 @@
                          value-parse-fn
 
                          (some? value-type)
-                         #(parse-type value-type %)
+                         (parse-type-fn-with-handlers value-type type-handlers)
 
                          ;; by default, don't try to parse the value
                          true
                          (constantly nil))]
     (fn [^ConsumerRecord cr]
-      (let [parsed-key (k-parse-fn (.key cr))
-            parsed-val (v-parse-fn (.value cr))]
+      (let [topic      (.topic cr)
+            parsed-key (k-parse-fn topic (.key cr))
+            parsed-val (v-parse-fn topic (.value cr))]
         (if (ifn? map-record-fn)
           (let [extra-args (cond-> {}
                                    include-headers? (assoc ::headers (headers->clj cr))
@@ -94,14 +114,14 @@
   structure) that will then be passed along in the transduction pipeline to the filter, map, and reduce functions.
 
   If ::reducing-fn is included in record-handling-opts, it will be used as the reducing fn in the transduction."
-  [record-handling-opts]
+  [record-handling-opts type-handlers]
   (condp instance? record-handling-opts
-    IPersistentMap (cond-> {::consumer-record-map-fn (make-record-handler-fn record-handling-opts)}
+    IPersistentMap (cond-> {::consumer-record-map-fn (make-record-handler-fn record-handling-opts type-handlers)}
                            (fn? (get record-handling-opts ::reducing-fn))
                            (assoc ::poll-xf-reducing-fn (get record-handling-opts ::reducing-fn)))
     ;; if `msg-handling` is a String, interpret it as the value-type and return a
     ;; handler fn that simply parses the value and returns that
-    String {::consumer-record-map-fn (make-default-record-handler-fn record-handling-opts)}
+    String {::consumer-record-map-fn (make-default-record-handler-fn record-handling-opts type-handlers)}
     (throw (ex-info (format (str "record-handling %s was not recognized; must be either a"
                                  " string (message value format) or map")
                             record-handling-opts)
@@ -286,7 +306,7 @@
 
           (or (int? forward-by) (int? backward-by))
           (do
-            (if (> (count @active-assignments-atom) 1)
+            (if (empty? @active-assignments-atom)
               (ex-info "Can only seek+ or seek- when one assignment is active"
                        {::active-assignments @active-assignments-atom})
               (let [active-assignment (first @active-assignments-atom)
@@ -461,8 +481,8 @@
        (str/join ", ")
        print-output-line))
 
-(defn last-read* [last-read-records-atom record-handling-opts]
-  (map (record-handling-opts>record-handler-fn record-handling-opts) @last-read-records-atom))
+(defn last-read* [last-read-records-atom record-handling-opts type-handlers]
+  (map (record-handling-opts>record-handler-fn record-handling-opts type-handlers) @last-read-records-atom))
 
 (defn list-topics*
   "TODO: fill in"
@@ -485,12 +505,14 @@
                                             ::reducing-fn]))
 
 (defn record-handling-opts->poll-xf-args
-  "For the given record-handling-opts, produce a poll-xf-args map, which can then be passed into a transduction
-  upon a stream of ConsumerRecord instances.
+  "For the given record-handling-opts, and type-handlers, produce a poll-xf-args map, which can then be passed into a
+  transduction upon a stream of ConsumerRecord instances.
 
   record-handling-options must either be a string, or a map. If a string (the simplified form), then it is
   assumed to be the type of a ConsumerRecord value, which will be interpreted by building its corresponding
   type-handler and setting that as the value parser (and ignoring the ConsumerRecord key, offset, headers, etc.)
+
+  type-handlers is a map from strings (type names) to instances of the type-handler interface
 
   If a map is given, then more complete control over the iteration can be achieved. The following keys are supported
     ::key-type - the type of the ConsumerRecord's key (to be parsed); ignored if key-parse-fn is provided
@@ -501,12 +523,33 @@
                       will be passed the key (if parsed), the value (if parsed), the headers, and offset information.
                       In essence, this produces a `mapped-record` from a `ConsumerRecord`. The default implementation,
                       if none is provided, is simply to return the parsed value."
-  [record-handling-opts]
-  (record-handling-opts>record-handler-fn record-handling-opts))
+  [record-handling-opts type-handlers]
+  (record-handling-opts>record-handler-fn record-handling-opts type-handlers))
 
 (s/fdef record-handling-opts->poll-xf-args
         :args (s/cat :record-handling-opts (s/or :string? string? :record-handling-opts? ::record-handling-opts))
         :ret ::poll-xf-args)
+
+(defrecord JsonHandler [])
+
+(extend-protocol type-handler JsonHandler
+  (parse-bytes [_ _ ^bytes b]
+    (json/read-str (String. b StandardCharsets/UTF_8) :keywordize? true))
+  (->clj [_ obj] ;;TODO: figure out how to do a default impl of this one
+    obj))
+
+(defmethod create-type-handler "json" [& _] (JsonHandler.))
+
+(defrecord TextHandler [])
+
+(extend-protocol type-handler TextHandler
+  (parse-bytes [_ _ ^bytes b]
+    (String. b StandardCharsets/UTF_8))
+  (->clj [_ obj]
+    obj))
+
+(defmethod create-type-handler "text" [& _] (TextHandler.))
+
 
 (defn clj-main-entrypoint
   "Entrypoint for running clj-main
@@ -534,7 +577,7 @@
   (current-assignments [this]))
 
 (defrecord KCRClient [^KafkaConsumer consumer to-consumer-chan from-consumer-chan active-assignments-atom
-                      last-read-records-atom]
+                      last-read-records-atom type-handlers]
   KCRClientInterface
   (initialize! [_]
     (run-consumer-loop! consumer to-consumer-chan from-consumer-chan))
@@ -546,9 +589,9 @@
     (print-assignments* (current-assignments kcrc)))
   (read-from [_ topic part offset num-msg record-handling-opts]
     (read-from* to-consumer-chan from-consumer-chan active-assignments-atom last-read-records-atom topic part
-                (record-handling-opts->poll-xf-args record-handling-opts) offset num-msg))
+                (record-handling-opts->poll-xf-args record-handling-opts type-handlers) offset num-msg))
   (last-read [_ record-handling-opts]
-    (last-read* last-read-records-atom record-handling-opts))
+    (last-read* last-read-records-atom record-handling-opts type-handlers))
   (assign [_ topic part offset]
     (assign! to-consumer-chan from-consumer-chan active-assignments-atom topic part offset))
   (seek [_ offset]
@@ -565,13 +608,13 @@
            from-consumer-chan
            {::active-assignments-atom active-assignments-atom
             ::while-fn                while-fn
-            ::poll-xf-args            (record-handling-opts->poll-xf-args record-handling-opts)}))
+            ::poll-xf-args            (record-handling-opts->poll-xf-args record-handling-opts type-handlers)}))
   (seek-until [_ until-fn record-handling-opts]
     (seek! to-consumer-chan
            from-consumer-chan
            {::active-assignments-atom active-assignments-atom
             ::until-fn                until-fn
-            ::poll-xf-args            (record-handling-opts->poll-xf-args record-handling-opts)}))
+            ::poll-xf-args            (record-handling-opts->poll-xf-args record-handling-opts type-handlers)}))
   (pause [_ topic part]
     (pause! to-consumer-chan from-consumer-chan active-assignments-atom topic part))
   (resume [_ topic part]
@@ -582,7 +625,7 @@
            active-assignments-atom
            last-read-records-atom
            {::num-msg      num-msg
-            ::poll-xf-args (record-handling-opts->poll-xf-args record-handling-opts)}))
+            ::poll-xf-args (record-handling-opts->poll-xf-args record-handling-opts type-handlers)}))
   (current-assignments [_]
     (consumer-assigments consumer active-assignments-atom))
   (stop [_]
@@ -597,21 +640,28 @@
     (.close consumer)))
 
 (defn make-kcr-client ^KCRClient [config-fname-or-props]
-  (let [consumer (cond (map? config-fname-or-props)
-                       (KafkaConsumer. ^Map config-fname-or-props)
+  (let [props (cond (map? config-fname-or-props)
+                    (doto (Properties.)
+                      (.putAll config-fname-or-props))
 
-                       (string? config-fname-or-props)
-                       (do
-                         (log/debugf "Assuming %s is a config file name; initializing consumer from that"
-                                     config-fname-or-props)
-                         (-> (doto (Properties.)
-                               (.load (io/reader config-fname-or-props)))
-                             (KafkaConsumer.)))
+                    (string? config-fname-or-props)
+                    (do
+                      (log/debugf "Assuming %s is a config file name; initializing consumer from that"
+                                  config-fname-or-props)
+                      (doto (Properties.)
+                        (.load (io/reader config-fname-or-props))))
 
-                       true
-                       (throw (ex-info "Parameter must be a map (property key/values) or a String (file path)"
-                                       {:arg config-fname-or-props})))]
-      (->KCRClient consumer (a/chan 1) (a/chan 1) (atom #{}) (atom {}))))
+                    true
+                    (throw (ex-info "Parameter must be a map (property key/values) or a String (file path)"
+                                    {:arg config-fname-or-props})))
+        consumer (KafkaConsumer. props)
+        ;; construct an instance of each known type-handler here, which currently relies upon the namespace
+        ;; providing it to have been required; may need to change to something more sophisticated later?
+        ths (reduce-kv (fn [acc t f]
+                         (assoc acc t (f props))) {} (methods create-type-handler))]
+
+    (log/infof "starting with type handlers %s" (keys ths))
+    (->KCRClient consumer (a/chan 1) (a/chan 1) (atom #{}) (atom {}) ths)))
 
 (def ^:private java-cmds
   "A map from subcommand (i.e. operation) name to another map containing the tools.cli options, the actual fn to
@@ -628,7 +678,7 @@
                    int #(Integer/parseInt %)
                    long #(Long/parseLong %)
                    nil)]
-    (cond-> {::arg-description (:doc m), ::arg-default (:default m), ::required? (::required? m)}
+    (cond-> {::arg-description (:doc m), ::arg-default (:default m), ::required? (::required? m), ::arg-name (::arg-name m)}
             (some? parse-fn)
             (assoc ::arg-parse-fn parse-fn))))
 
@@ -680,9 +730,9 @@
               ::description ~op-desc
               ::opts-spec [~@(map-indexed
                                (fn [idx arg]
-                                (let [arg-nm       (name arg)
-                                      arg-metadata (nth args-metadata idx)
-                                      {:keys [::arg-parse-fn ::arg-default ::arg-description ::required?]} arg-metadata
+                                (let [arg-metadata (nth args-metadata idx)
+                                      {:keys [::arg-name ::arg-parse-fn ::arg-default ::arg-description ::required?]} arg-metadata
+                                      arg-nm (or arg-name (name arg))
                                       long-opt (str "--" arg-nm " " (str/upper-case arg-nm))]
                                   (-> (cond-> [(when required? (str "-" (first arg-nm))) long-opt arg-description
                                                :parse-fn arg-parse-fn]
@@ -719,6 +769,7 @@
              ^long ^{:doc "The topic partition to read from", :default 0} part
              ^long ^{:doc "The offset to start reading from", :default 0} offset
              ^long ^{:doc "The number of messages to read", :default 10} num-msg
+             ;; TODO: figure out how to get by with something like msg-format instead of record-handling-opts in Java
              ^{:doc "Record handling options (see documentation)"} record-handling-opts)
       (defop ^{:doc "Read from the current active assignments"} poll kcr-client true true
              ^long ^{:doc "The number of messages to read", :default 10} num-msg
@@ -728,9 +779,7 @@
              ^long ^{:doc "The topic partition to read from", ::required? true} part
              ^long ^{:doc "The offset to start reading from", ::required? true} offset)
       (defop ^{:doc "Change the offset to poll from next for the given topic/partition"} seek kcr-client true true
-             ^{:doc "The topic name to read from", ::required? true} topic
-             ^long ^{:doc "The topic partition to read from", ::required? true} part
-             ^long ^{:doc "The offset to start reading from", ::required? true} offset)
+             ^long ^{:doc "The offset to seek to", ::required? true} offset)
       (defop ^{:doc "Increment the offset for the current assignment by the given amount"} seek+ kcr-client true true
              ^long ^{:doc "The number of offsets to advance by", ::required? true} by)
       (defop ^{:doc "Decrement the offset for the current assignment by the given amount"} seek- kcr-client true true
@@ -751,6 +800,9 @@
   `(exec-entrypoint ~config-fname ~@run-body))
 
 (defn -main [config-file & more]
+  (thl/load-type-handlers)
   (entrypoint config-file (fn [kcr-client]
                             (log/infof "Welcome to kc-repl!" (pr-str (metrics kcr-client)))
                             (n.c/-main "-i"))))
+
+

@@ -1,9 +1,10 @@
 (ns us.jeffevans.kc-repl.java-main
-  (:require [clojure.tools.cli :as cli]
+  (:require [clojure.string :as str]
+            [clojure.tools.cli :as cli]
             [clojure.tools.logging :as log]
             [us.jeffevans.kc-repl :as kcr]
-            [clojure.string :as str])
-  (:gen-class)
+            [us.jeffevans.kc-repl.type-handler-load :as thl])
+  (:gen-class :name us.jeffevans.KcRepl)
   (:import (org.apache.logging.log4j.core.config Configurator)))
 
 (def cli-options
@@ -30,15 +31,14 @@
   TODO: actually get it working"
   [config-fname & more]
   (log/infof "-main started with %s%n" config-fname)
-  ;; TODO: don't hardcode this; read it from the default jar location if available
-  #_(Configurator/initialize nil "/Users/jevans/dev/side-projects/kc-repl/resources/log4j2.properties")
-  (log/info "Finished configuring log4j2")
+
+  (thl/load-type-handlers)
   (kcr/entrypoint config-fname
     (fn [_]
       (let [continue? (atom true)]
         (while @continue?
           (let [input       (get-input-line)
-                [op & args] (str/split input #" ")
+                [op & args] (if (nil? input) ["stop"] (str/split input #" "))
                 {:keys [::kcr/invoke-fn ::kcr/opts-spec ::kcr/print-offsets?]} (get @#'kcr/java-cmds op)]
             (log/tracef "got input %s, op %s, args %s, opts-spec %s" input op (pr-str args) (pr-str opts-spec))
             (println)

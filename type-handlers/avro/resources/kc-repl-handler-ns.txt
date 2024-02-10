@@ -1,0 +1,1 @@
+us.jeffevans.kc-repl.type-handlers.avro
