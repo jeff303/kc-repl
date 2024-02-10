@@ -1,22 +1,18 @@
 (ns us.jeffevans.kc-repl.test-common
   "Fixtures and related utils/constants for use in kc-repl tests"
   (:require [clojure.data.json :as json]
-            [clojure.java.io :as io]
             [us.jeffevans.kc-repl :as kcr]
             [us.jeffevans.kc-repl.test-containers :as containers])
-  (:import #_(com.findinpath.testcontainers SchemaRegistryContainer ZookeeperContainer)
-           (java.io File)
-           (org.testcontainers.containers #_ComposeContainer KafkaContainer Network)
-           (org.apache.kafka.clients.admin Admin KafkaAdminClient NewTopic)
-           (org.apache.kafka.clients.producer KafkaProducer ProducerConfig ProducerRecord)
-           (clojure.lang IPersistentMap)
-           (org.testcontainers.containers.wait.strategy Wait)
-           (org.testcontainers.utility DockerImageName)
+  (:import (clojure.lang IPersistentMap)
+           (java.math MathContext)
+           (java.nio.charset StandardCharsets)
+           (org.apache.kafka.clients.admin Admin)
            (org.apache.kafka.clients.consumer ConsumerConfig)
+           (org.apache.kafka.clients.producer KafkaProducer ProducerConfig)
            (org.apache.kafka.common.header.internals RecordHeader)
            (org.apache.kafka.common.serialization ByteArrayDeserializer)
-           (java.math MathContext)
-           (java.nio.charset StandardCharsets)))
+           (org.testcontainers.containers KafkaContainer Network)
+           (org.testcontainers.utility DockerImageName)))
 
 (def ^:private ^:const byte-array-serializer "org.apache.kafka.common.serialization.ByteArraySerializer")
 
@@ -47,7 +43,7 @@
 (defn simple-kafka-container-fixture
   "Fixture that creates the Kafka broker testcontainer, and binds an admin and producer dynamic var pointing to it.
   These are all closed upon suite completion."
-  ([network zk-url f]
+  ([^Network network zk-url f]
    (with-open [container (cond-> (-> (format "confluentinc/cp-kafka:%s" containers/cp-version)
                                      DockerImageName/parse
                                      (KafkaContainer.)
@@ -68,79 +64,22 @@
      (.setNetworkAliases container [kafka-network])
      (.start container)
      (let [bootstrap-uri (.getBootstrapServers container)
-           common-props  {ConsumerConfig/BOOTSTRAP_SERVERS_CONFIG bootstrap-uri}]
-       (with-open [admin    (Admin/create common-props)
+           common-props {ConsumerConfig/BOOTSTRAP_SERVERS_CONFIG bootstrap-uri}]
+       (with-open [admin (Admin/create common-props)
                    producer (KafkaProducer. (assoc common-props
-                                                   ProducerConfig/KEY_SERIALIZER_CLASS_CONFIG byte-array-serializer
-                                                   ProducerConfig/VALUE_SERIALIZER_CLASS_CONFIG byte-array-serializer
-                                                   ProducerConfig/ENABLE_IDEMPOTENCE_CONFIG "true"
-                                                   ProducerConfig/TRANSACTIONAL_ID_CONFIG "kc-repl-testing"
-                                                   ProducerConfig/ACKS_CONFIG "all"))]
-          (binding [*kafka-container* container
-                    *kafka-bootstrap-url* bootstrap-uri
-                    *kafka-admin* admin
-                    *kafka-producer* producer
-                    *kafka-common-props* common-props]
-            (f))))))
+                                              ProducerConfig/KEY_SERIALIZER_CLASS_CONFIG byte-array-serializer
+                                              ProducerConfig/VALUE_SERIALIZER_CLASS_CONFIG byte-array-serializer
+                                              ProducerConfig/ENABLE_IDEMPOTENCE_CONFIG "true"
+                                              ProducerConfig/TRANSACTIONAL_ID_CONFIG "kc-repl-testing"
+                                              ProducerConfig/ACKS_CONFIG "all"))]
+         (binding [*kafka-container* container
+                   *kafka-bootstrap-url* bootstrap-uri
+                   *kafka-admin* admin
+                   *kafka-producer* producer
+                   *kafka-common-props* common-props]
+           (f))))))
   ([f]
    (simple-kafka-container-fixture nil nil f)))
-
-(defn zookeeper-fixture-notworking
-  "This is needed purely to facilitate connecting Kafka with Schema Registry."
-  [network f]
-  (with-open [zk-cont (-> (containers/make-zk-container)
-                          (.withEnv "ZOOKEEPER_CLIENT_PORT" (str containers/zk-internal-port))
-                          (.withEnv "ZOOKEEPER_TICK_TIME" (str containers/zk-tick-time))
-                          (.withExposedPorts (into-array Integer [(int containers/zk-internal-port)]))
-                          (.withNetworkAliases (into-array String [containers/zk-network-alias]))
-                          (.withNetwork network))]
-    (.start zk-cont)
-    (f)))
-
-(defn schema-registry-fixture-notworking
-  "The actual schema registry fixture."
-  [^Network network zk-url f]
-  (with-open [sr-cont (-> (containers/make-sr-container)
-                          #_(.withEnv "SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL" zk-url)
-                          (.withEnv "SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS" *kafka-bootstrap-url*)
-                          (.withEnv "SCHEMA_REGISTRY_HOST_NAME" containers/sr-network-alias)
-                          (.withEnv "SCHEMA_REGISTRY_LISTENERS" "http://0.0.0.0:8081")
-                          (.withExposedPorts (into-array Integer [(int containers/sr-port)]))
-                          (.withNetworkAliases (into-array String [containers/sr-network-alias]))
-                          (.withNetwork network)
-                          (.waitingFor (Wait/forHttp "/subjects")))]
-    (.start sr-cont)
-    (binding [*schema-registry-url* (format "http://%s:%d" (.getHost sr-cont) (.getMappedPort containers/sr-port))]
-      (f))))
-
-#_(defn kafka-with-schema-registry-fixture
-    [^Network network f]
-    (with-open [zk-cont    (-> (ZookeeperContainer. "5.5.0")
-                               (.withNetwork network))
-                kafka-cont (-> (com.findinpath.testcontainers.KafkaContainer. "5.5.0" (.getInternalUrl zk-cont))
-                               (.withNetwork network))
-                sr-cont    (-> (SchemaRegistryContainer. "5.5.0" (.getInternalUrl zk-cont))
-                               (.withNetwork network))]
-      (.start zk-cont)
-      (.start kafka-cont)
-      (.start sr-cont)
-      ;final Properties props = new Properties();
-      ;props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaContainer.getBootstrapServers());
-      ;props.put(ProducerConfig.ACKS_CONFIG, "all");
-      ;props.put(ProducerConfig.RETRIES_CONFIG, 0);
-      ;props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-      ;props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class);
-      ;props.put(AbstractKafkaAvroSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG,
-      ;           schemaRegistryContainer.getUrl());
-      ;props.put(KafkaAvroSerializerConfig.VALUE_SUBJECT_NAME_STRATEGY,
-      ;           TopicNameStrategy.class.getName());
-      (let [common-props {ConsumerConfig/BOOTSTRAP_SERVERS_CONFIG (.getBootstrapServers kafka-cont)}]
-        (binding [*kafka-common-props* common-props
-                  *schema-registry-url* (.getUrl sr-cont)
-                  *kafka-admin* (Admin/create common-props)]
-          (f)))))
-
-
 
 
 (def ^:const ^:private sr-url-prop
@@ -151,26 +90,9 @@
   "The schema.registry.url value that should be used with the docker-compose fixture"
   "http://localhost:8081")
 
-#_(defn kafka-with-schema-registry-docker-compose-fixture
-    [f]
-    (with-open [cont (doto (ComposeContainer. (into-array File [(io/file "/Users/jeff/dev/clojure/kc-repl/type-handlers/avro/test/docker-compose.yml")]))
-                       (.withLocalCompose false)
-                       (.withExposedService "kafka-broker-1" 19092 (Wait/forListeningPort)))]
-      (.start cont)
-      (let [common-props {ConsumerConfig/BOOTSTRAP_SERVERS_CONFIG "localhost:19092"
-                          ;; NOTE: this is apparently needed even when seeking (ex to offset 0)
-                          ;; that can result in
-                          ;; 2024-02-02 20:27:37 INFO  Fetcher:1400 - [Consumer clientId=consumer-kc-repl-test-1, groupId=kc-repl-test] Fetch position FetchPosition{offset=0, offsetEpoch=Optional.empty, currentLeader=LeaderAndEpoch{leader=Optional[localhost:19092 (id: 1 rack: null)], epoch=0}} is out of range for partition sensor-readings-0, resetting offset
-                          ;; on the fetch, even though offset 0 is very clearly available
-                          ;; may be a side-effect of the Docker image being used or some other factor
-                          ConsumerConfig/AUTO_OFFSET_RESET_CONFIG "earliest"
-                          sr-url-prop                             compose-fixture-sr-url}]
-        (binding [*kafka-common-props* common-props
-                  *schema-registry-url* compose-fixture-sr-url
-                  *kafka-admin* (Admin/create common-props)]
-          (f)))))
-
-(defn kafka-with-schema-registry-docker-compose-fixture-manual
+(defn kafka-with-schema-registry-docker-compose-manual-fixture
+  "This is a test fixture which relies upon Kafka and Schema Registry having been
+  started externally to the JVM (ex: a docker compose file)."
   [f]
   (let [common-props {ConsumerConfig/BOOTSTRAP_SERVERS_CONFIG "localhost:19092"
                       ConsumerConfig/AUTO_OFFSET_RESET_CONFIG "earliest"
@@ -214,9 +136,9 @@
 
 (defn kcr-client-props []
   (assoc *kafka-common-props*
-         ConsumerConfig/MAX_POLL_RECORDS_CONFIG (int test-poll-size)
-         ConsumerConfig/KEY_DESERIALIZER_CLASS_CONFIG (.getName ByteArrayDeserializer)
-         ConsumerConfig/VALUE_DESERIALIZER_CLASS_CONFIG (.getName ByteArrayDeserializer)))
+    ConsumerConfig/MAX_POLL_RECORDS_CONFIG (int test-poll-size)
+    ConsumerConfig/KEY_DESERIALIZER_CLASS_CONFIG (.getName ByteArrayDeserializer)
+    ConsumerConfig/VALUE_DESERIALIZER_CLASS_CONFIG (.getName ByteArrayDeserializer)))
 
 (defn kcr-client-fixture
   "Fixture that creates a kc-repl client and binds it; will be stopped and closed at the end of the test suite"

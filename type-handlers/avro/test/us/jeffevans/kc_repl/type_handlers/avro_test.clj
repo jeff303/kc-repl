@@ -44,8 +44,8 @@
           (println insert-res)))
       (f))))
 
-(use-fixtures :once tc/kafka-with-schema-registry-docker-compose-fixture-manual
-                    test-avro-data-fixture)
+(use-fixtures :once tc/kafka-with-schema-registry-docker-compose-manual-fixture
+              test-avro-data-fixture)
 
 ;; need one of these per test since they might run in parallel
 (use-fixtures :each tc/kcr-client-fixture)
