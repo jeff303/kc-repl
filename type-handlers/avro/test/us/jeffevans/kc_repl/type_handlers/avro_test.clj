@@ -2,6 +2,7 @@
   (:require
     [clojure.java.io :as io]
     [clojure.test :refer :all]
+    [clojure.tools.logging :as log]
     [us.jeffevans.kc-repl :as kcr]
     [us.jeffevans.kc-repl.test-common :as tc]
     [us.jeffevans.kc-repl.type-handlers.avro :as avro])
@@ -13,6 +14,8 @@
            (org.apache.kafka.clients.admin NewTopic)
            (org.apache.kafka.clients.producer KafkaProducer ProducerConfig ProducerRecord)))
 (def ^:private ^:const avro-data-topic "sensor-readings")
+
+(def ^:dynamic *start-offset* 0)
 
 (def test-data [{::deviceId 1, ::reading 10.0, ::timestamp 1676231420000}
                 {::deviceId 13, ::reading 17.9, ::timestamp 1676231438000}])
@@ -30,19 +33,24 @@
           producer       (KafkaProducer. producer-props)]
       (.createTopics tc/*kafka-admin* [(NewTopic. "sensor-readings" 1 (short 1))])
       (.register sr-client (str topic-nm "-value") (AvroSchema. schema) true)
-      (doseq [{did ::deviceId, r ::reading, ts ::timestamp} test-data]
-        (let [record     (doto (GenericData$Record. schema)
-                           (.put "deviceId" did)
-                           (.put "reading" r)
-                           (.put "timestamp" ts))
-              insert-res @(.send producer (ProducerRecord. topic-nm
-                                                           (int 0)
-                                                           ts
-                                                           nil
-                                                           record
-                                                           []))]
-          (println insert-res)))
-      (f))))
+      (let [start-offset (reduce (fn [min-offset {did ::deviceId, r ::reading, ts ::timestamp}]
+                                   (let [record     (doto (GenericData$Record. schema)
+                                                      (.put "deviceId" did)
+                                                      (.put "reading" r)
+                                                      (.put "timestamp" ts))
+                                         record-md @(.send producer (ProducerRecord. topic-nm
+                                                                                     nil
+                                                                                     nil
+                                                                                     nil
+                                                                                     record
+                                                                                     []))
+                                         new-offset (.offset record-md)]
+                                     (log/debugf "inserted Avro test record at offset %d" new-offset)
+                                     (min min-offset new-offset)))
+                                 Long/MAX_VALUE
+                                 test-data)]
+        (binding [*start-offset* start-offset]
+          (f))))))
 
 (use-fixtures :once tc/kafka-with-schema-registry-docker-compose-manual-fixture
               test-avro-data-fixture)
@@ -56,6 +64,6 @@
   (testing "list-topics works as expected"
     (is (contains? (into #{} (kcr/list-topics tc/*kcr-client*)) avro-data-topic)))
   (testing "reading Avro data"
-    (let [records (kcr/read-from tc/*kcr-client* avro-data-topic 0 0 (count test-data) "avro")]
+    (let [records (kcr/read-from tc/*kcr-client* avro-data-topic 0 *start-offset* (count test-data) "avro")]
       (is (= (map (partial reduce-kv (fn [acc k v]
                                        (assoc acc (name k) v)) {}) test-data) records)))))

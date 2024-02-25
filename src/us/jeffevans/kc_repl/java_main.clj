@@ -53,10 +53,10 @@
               (let [parsed (cli/parse-opts args opts-spec)]
                 (log/tracef "parsed: %s" (pr-str parsed))
                 (if (:errors parsed)
-                  (kcr/print-error-line (format "Error invoking %s command:%s%n%s"
+                  (kcr/print-error-line (format "Error invoking %s command: %s%n%s"
                                                 op
                                                 (pr-str (:errors parsed))
-                                                (pr-str (:summary parsed))))
+                                                (:summary parsed)))
                   (when (fn? invoke-fn)
                     (let [res (invoke-fn parsed)]
                       (when (and res (not= res ::kcr/ok))

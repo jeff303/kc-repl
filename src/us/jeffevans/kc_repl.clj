@@ -3,6 +3,7 @@
   (:require
     [clojure.core.async :as a]
     [clojure.data.json :as json]
+    [clojure.edn :as edn]
     [clojure.java.io :as jio]
     [clojure.tools.logging :as log]
     [clojure.spec.alpha :as s]
@@ -32,7 +33,8 @@
 
 (defprotocol type-handler
   (parse-bytes [this ^String topic ^bytes b])
-  (->clj [this obj]))
+  (->clj [this obj])
+  (set-config! [this k & args]))
 
 (defmulti create-type-handler (fn [type* & _]
                                 type*))
@@ -251,8 +253,12 @@
     (when-not (contains? assignments assignment)
       (let [new-assignments (conj assignments assignment)]
         (.assign consumer new-assignments)
-        (.pause consumer new-assignments))
-      (idle-poll! consumer))))
+        (.pause consumer new-assignments)
+        (.seekToBeginning consumer [assignment])
+        (.position consumer assignment)
+        (let [beg (.beginningOffsets consumer new-assignments)]
+          (print beg))))
+    (idle-poll! consumer)))
 
 (defn- assign-and-seek! [^KafkaConsumer consumer assignments active-assignments-atom]
   (doseq [topic (keys assignments)]
@@ -536,7 +542,10 @@
   (parse-bytes [_ _ ^bytes b]
     (json/read-str (String. b StandardCharsets/UTF_8) :keywordize? true))
   (->clj [_ obj] ;;TODO: figure out how to do a default impl of this one
-    obj))
+    obj)
+  (set-config! [& _]
+    (throw (UnsupportedOperationException. "json handler has no configs to set"))))
+
 
 (defmethod create-type-handler "json" [& _] (JsonHandler.))
 
@@ -546,7 +555,9 @@
   (parse-bytes [_ _ ^bytes b]
     (String. b StandardCharsets/UTF_8))
   (->clj [_ obj]
-    obj))
+    obj)
+  (set-config! [& _]
+    (throw (UnsupportedOperationException. "text handler has no configs to set"))))
 
 (defmethod create-type-handler "text" [& _] (TextHandler.))
 
@@ -574,7 +585,8 @@
   (resume [this topic part])
   (poll [this num-msg record-handling-opts])
   (stop [this])
-  (current-assignments [this]))
+  (current-assignments [this])
+  (set-type-handler-config! [this type-name k & args]))
 
 (defrecord KCRClient [^KafkaConsumer consumer to-consumer-chan from-consumer-chan active-assignments-atom
                       last-read-records-atom type-handlers]
@@ -630,6 +642,11 @@
     (consumer-assigments consumer active-assignments-atom))
   (stop [_]
     (stop* to-consumer-chan))
+  (set-type-handler-config! [_ type-name k & args]
+    #_(log/infof "type-name %s k %s v %s" type-name k v)
+    (if-let [th (get type-handlers type-name)]
+      (set-config! th k & args)
+      (throw (IllegalArgumentException. (format "no type handler found for %s" type-name)))))
 
   AutoCloseable
   (close [_]
@@ -658,7 +675,9 @@
         ;; construct an instance of each known type-handler here, which currently relies upon the namespace
         ;; providing it to have been required; may need to change to something more sophisticated later?
         ths (reduce-kv (fn [acc t f]
-                         (assoc acc t (f props))) {} (methods create-type-handler))]
+                         (assoc acc t (f props)))
+                       {}
+                       (methods create-type-handler))]
 
     (log/infof "starting with type handlers %s" (keys ths))
     (->KCRClient consumer (a/chan 1) (a/chan 1) (atom #{}) (atom {}) ths)))
@@ -731,7 +750,7 @@
               ::opts-spec [~@(map-indexed
                                (fn [idx arg]
                                 (let [arg-metadata (nth args-metadata idx)
-                                      {:keys [::arg-name ::arg-parse-fn ::arg-default ::arg-description ::required?]} arg-metadata
+                                      {:keys [::arg-name ::arg-parse-fn ::arg-default ::arg-description ::required? ::varargs?]} arg-metadata
                                       arg-nm (or arg-name (name arg))
                                       long-opt (str "--" arg-nm " " (str/upper-case arg-nm))]
                                   (-> (cond-> [(when required? (str "-" (first arg-nm))) long-opt arg-description
@@ -745,11 +764,27 @@
                                op-args)]
               ::print-offsets? ~print-offsets?})))))
 
-
 (def ^:dynamic ^KCRClient *client* "The kcr-client bound within the entrypoint" nil)
 
 (defn- print-clj-help []
   (println (str/join "\n" clj-help-lines)))
+
+(defn maybe-string->clj [str-value]
+ (try
+   (edn/read-string str-value)
+   (catch Exception e
+     (log/infof e "Error parsing string %s with EDN reader" str-value)
+     nil)))
+
+(defn- parse-config-opt-val
+  "Attempts to parse the given `v` as a Clojure data structure via the EDN reader, if it is a String.  If that fails, or
+  if `v` is not a String, returns `v` unmodified"
+  [v]
+  (if (string? v)
+    (if-let [clj-val (maybe-string->clj v)]
+      clj-val
+      v)
+    v))
 
 (defn exec-entrypoint
   "Entrypoint for running in an existing REPL"
@@ -773,7 +808,7 @@
              ^{:doc "Record handling options (see documentation)"} record-handling-opts)
       (defop ^{:doc "Read from the current active assignments"} poll kcr-client true true
              ^long ^{:doc "The number of messages to read", :default 10} num-msg
-             ^{:doc "Record handling options (see documentation)"} record-handling-opts)
+             ^{:doc "Record handling options (see documentation)", ::required? true} record-handling-opts)
       (defop ^{:doc "Add a topic/partition to the active assignments"} assign kcr-client true true
              ^{:doc "The topic name to read from", ::required? true} topic
              ^long ^{:doc "The topic partition to read from", ::required? true} part
@@ -790,6 +825,11 @@
       (defop ^{:doc "Seek forward in the message stream while some condition is met"} seek-until kcr-client false false
              ^{:doc "Conditional (until) function; operates on the mapped record"} while-fn
              ^{:doc "Record handling options (see documentation)"} record-handling-opts)
+      ;; will revisit this once we have a better Java args parser
+      #_(defop ^{:doc "Set a config option for a type handler"} set-type-handler-config! kcr-client true true
+               ^{:doc "The type on which to set the config option", ::required? true} type-name
+               ^{:doc "The config option's key", ::required? true} k
+               ^{:doc "The config option's arguments", ::required? true, ::varargs? true} args)
       (defop ^{:doc "Print the last read results"} last-read kcr-client true true)
       (defop ^{:doc "Stop the client and disconnect the session"} stop kcr-client true false)
       (intern (the-ns 'user) 'help print-clj-help)

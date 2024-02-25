@@ -1,0 +1,9 @@
+package us.jeffevans.kc_repl.testdata;
+
+import "google/protobuf/timestamp.proto";
+
+message SensorReading {
+      required uint64 deviceId = 1;
+      required double reading = 2;
+      optional google.protobuf.Timestamp timestamp = 3;
+}

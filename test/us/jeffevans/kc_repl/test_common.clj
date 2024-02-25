@@ -6,9 +6,9 @@
   (:import (clojure.lang IPersistentMap)
            (java.math MathContext)
            (java.nio.charset StandardCharsets)
-           (org.apache.kafka.clients.admin Admin)
+           (org.apache.kafka.clients.admin Admin NewTopic)
            (org.apache.kafka.clients.consumer ConsumerConfig)
-           (org.apache.kafka.clients.producer KafkaProducer ProducerConfig)
+           (org.apache.kafka.clients.producer KafkaProducer ProducerConfig ProducerRecord)
            (org.apache.kafka.common.header.internals RecordHeader)
            (org.apache.kafka.common.serialization ByteArrayDeserializer)
            (org.testcontainers.containers KafkaContainer Network)
@@ -38,6 +38,7 @@
 (def ^:dynamic ^IPersistentMap *kafka-common-props* nil)
 (def ^:dynamic *kcr-client* nil)
 
+(def ^:const ^String schema-registry-url-prop "schema.registry.url")
 (def ^:dynamic ^String *schema-registry-url* nil)
 
 (defn simple-kafka-container-fixture
@@ -138,7 +139,9 @@
   (assoc *kafka-common-props*
     ConsumerConfig/MAX_POLL_RECORDS_CONFIG (int test-poll-size)
     ConsumerConfig/KEY_DESERIALIZER_CLASS_CONFIG (.getName ByteArrayDeserializer)
-    ConsumerConfig/VALUE_DESERIALIZER_CLASS_CONFIG (.getName ByteArrayDeserializer)))
+    ConsumerConfig/VALUE_DESERIALIZER_CLASS_CONFIG (.getName ByteArrayDeserializer)
+    ConsumerConfig/ENABLE_AUTO_COMMIT_CONFIG false
+    ConsumerConfig/AUTO_OFFSET_RESET_CONFIG "none"))
 
 (defn kcr-client-fixture
   "Fixture that creates a kc-repl client and binds it; will be stopped and closed at the end of the test suite"
