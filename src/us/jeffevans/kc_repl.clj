@@ -4,23 +4,22 @@
     [clojure.core.async :as a]
     [clojure.data.json :as json]
     [clojure.edn :as edn]
-    [clojure.java.io :as jio]
-    [clojure.tools.logging :as log]
+    [clojure.java.io]
+    [clojure.java.io :as io]
     [clojure.spec.alpha :as s]
     [clojure.string :as str]
-    [clojure.java.io :as io]
+    [clojure.tools.logging :as log]
     [nrepl.cmdline :as n.c]
     [us.jeffevans.kc-repl.type-handler-load :as thl])
   (:import
-    (java.time Duration)
-    (java.util Properties Map)
-    (org.apache.kafka.clients.consumer ConsumerConfig ConsumerRecord KafkaConsumer)
-    (org.apache.kafka.common TopicPartition)
+    (clojure.lang IPersistentMap)
     (java.lang AutoCloseable)
-    (clojure.lang Atom IPersistentMap)
-    (org.apache.kafka.common.serialization ByteArrayDeserializer)
     (java.nio.charset StandardCharsets)
-    (org.apache.kafka.common.header Headers Header)))
+    (java.time Duration)
+    (java.util Properties)
+    (org.apache.kafka.clients.consumer ConsumerRecord KafkaConsumer)
+    (org.apache.kafka.common TopicPartition)
+    (org.apache.kafka.common.header Header Headers)))
 
 (def ^:private ^:const max-poll-interval-ms
   "Specifies the maximum time (in milliseconds) between calls to .poll that will be performed by the consumer. If no
@@ -759,7 +758,10 @@
                                               (concat [:default arg-default])
 
                                               required?
-                                              (concat [:missing (format "%s must be provided" arg-nm)]))
+                                              (concat [:missing (format "%s must be provided" arg-nm)])
+
+                                              varargs?
+                                              (concat [:multi true, :default [], :update-fn conj]))
                                       vec))) ;; TODO: fix ugliness
                                op-args)]
               ::print-offsets? ~print-offsets?})))))
@@ -826,10 +828,10 @@
              ^{:doc "Conditional (until) function; operates on the mapped record"} while-fn
              ^{:doc "Record handling options (see documentation)"} record-handling-opts)
       ;; will revisit this once we have a better Java args parser
-      #_(defop ^{:doc "Set a config option for a type handler"} set-type-handler-config! kcr-client true true
-               ^{:doc "The type on which to set the config option", ::required? true} type-name
-               ^{:doc "The config option's key", ::required? true} k
-               ^{:doc "The config option's arguments", ::required? true, ::varargs? true} args)
+      (defop ^{:doc "Set a config option for a type handler"} set-type-handler-config! kcr-client true true
+             ^{:doc "The type on which to set the config option", ::required? true} type-name
+             ^{:doc "The config option's key", ::required? true} k
+             ^{:doc "The config option's arguments", ::required? true, ::varargs? true} args)
       (defop ^{:doc "Print the last read results"} last-read kcr-client true true)
       (defop ^{:doc "Stop the client and disconnect the session"} stop kcr-client true false)
       (intern (the-ns 'user) 'help print-clj-help)
