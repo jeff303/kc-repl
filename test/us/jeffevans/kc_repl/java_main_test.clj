@@ -7,9 +7,25 @@
             [clojure.java.io :as io]
             [us.jeffevans.kc-repl :as kcr])
   (:import (java.io File)
+           (java.nio.charset StandardCharsets)
            (java.util Properties)))
 
 (use-fixtures :once tc/simple-kafka-container-fixture tc/kafka-test-topics-fixture)
+
+(defrecord TestSetConfigHandler [k-to-args])
+
+(extend-protocol kcr/type-handler TestSetConfigHandler
+  (parse-bytes [_ _ ^bytes b]
+    (String. b StandardCharsets/UTF_8))
+  (->clj [_ obj]
+    obj)
+  (set-config! [this k & args]
+    (swap! (:k-to-args this) assoc k args)))
+
+(def ^:private ^:const test-type-handler-nm "test-set-config")
+
+(defmethod kcr/create-type-handler test-type-handler-nm [& _]
+  (TestSetConfigHandler. (atom {})))
 
 (defn- make-line-producing-fn [lines]
   (let [remaining-lines (atom lines)]
@@ -34,6 +50,7 @@
                            "poll --num-msg 2 --record-handling-opts json"
                            "poll --record-handling-opts json"
                            "seek -o 0"
+                           (format "set-type-handler-config! --type-name %s --k foo --args bar1 bar2 bar3 bar4" test-type-handler-nm)
                            "stop"]
         line-gathering-fn (make-line-gathering-fn)]
     (with-redefs [kcrm/get-input-line   (make-line-producing-fn input-lines)
@@ -46,7 +63,9 @@
         (.store props (io/writer prop-file) nil)
         (try
           (kcrm/-main (.getAbsolutePath prop-file))
-          (let [final-lines (line-gathering-fn)]
+          #_(println "java-cmds: " @#'kcr/java-cmds)
+          (let [java-cmds @#'kcr/java-cmds
+                final-lines (line-gathering-fn)]
             (is (= ["[\"test-topic\"]"
                     "[{\"foo\" 0}]"
                     "test-topic:0 at 1"

@@ -752,6 +752,7 @@
                                       {:keys [::arg-name ::arg-parse-fn ::arg-default ::arg-description ::required? ::varargs?]} arg-metadata
                                       arg-nm (or arg-name (name arg))
                                       long-opt (str "--" arg-nm " " (str/upper-case arg-nm))]
+                                  (log/tracef "arg-metadata for %s: %s" (str (quote ~nm)) (pr-str arg-metadata))
                                   (-> (cond-> [(when required? (str "-" (first arg-nm))) long-opt arg-description
                                                :parse-fn arg-parse-fn]
                                               (some? arg-default)
@@ -831,7 +832,7 @@
       (defop ^{:doc "Set a config option for a type handler"} set-type-handler-config! kcr-client true true
              ^{:doc "The type on which to set the config option", ::required? true} type-name
              ^{:doc "The config option's key", ::required? true} k
-             ^{:doc "The config option's arguments", ::required? true, ::varargs? true} args)
+             ^{:doc "The config option's arguments 2", ::required? true, ::varargs? true, ::test-whatev 1} args)
       (defop ^{:doc "Print the last read results"} last-read kcr-client true true)
       (defop ^{:doc "Stop the client and disconnect the session"} stop kcr-client true false)
       (intern (the-ns 'user) 'help print-clj-help)

@@ -9,6 +9,9 @@
 (defn test "Run the tests." [opts]
   (bb/run-tests opts))
 
+(defn clean "Clean the output." [opts]
+  (bb/clean opts))
+
 (defn ci "Run the CI pipeline of tests (and build the uberjar)." [opts]
   (-> opts
       (assoc :lib lib :version version :main main)

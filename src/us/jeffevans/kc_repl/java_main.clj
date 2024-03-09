@@ -13,8 +13,8 @@
 (def java-cmd-args
   (insta/parser
     "<S> = CMD_NAME <WHITESPACE?> (SHORT_ARG | LONG_ARG)*
-     CMD_NAME = #'[a-zA-Z][\\-_\\+a-zA-Z0-9]*'
-     BAREWORD = #'[a-zA-Z0-9][\\-_\\+a-zA-Z0-9]*'
+     CMD_NAME = #'[a-zA-Z][\\-_\\+\\!a-zA-Z0-9]*'
+     BAREWORD = #'[a-zA-Z0-9][\\-_\\+\\.a-zA-Z0-9]*'
      ARG_PARAM = (SINGLE_QUOTED_WORD | DOUBLE_QUOTED_WORD | BAREWORD)
      LONG_ARG_WORD = <'-'> <'-'> BAREWORD
      LONG_ARG = LONG_ARG_WORD <WHITESPACE?> (ARG_PARAM <WHITESPACE?>)*
@@ -23,7 +23,7 @@
      WHITESPACE = #'\\s+'
      SINGLE_QUOTED_WORD = <'\\''> (ANY_WORD <WHITESPACE?>)* <'\\''>
      DOUBLE_QUOTED_WORD = <'\\\"'> (ANY_WORD <WHITESPACE?>)* <'\\\"'>
-     <ANY_WORD> = #'[\\-_a-zA-Z0-9]+'"))
+     <ANY_WORD> = #'[\\-_\\.a-zA-Z0-9]+'"))
 
 (defn- quoted-word->vals [quoted-word]
   (str/join " " quoted-word))
