@@ -4,7 +4,10 @@
             [us.jeffevans.kc-repl.java-main :as kcrm]))
 
 (deftest arg-parse-test
-  (let [cases [["dostuff -f a --bar \"baz man\" --zen a b c d"
+  (let [topic-nm "protobuf-data"
+        cls-nm   "us.jeffevans.kc_repl.testdata.SensorReadingOuterClass$SensorReading"
+        cfg-nm   "protobuf-topic-name-to-message-class"
+        cases [["dostuff -f a --bar \"baz man\" --zen a b c d"
                 ["dostuff" {"-f" ["a"]
                             "--bar" ["baz man"]
                             "--zen" ["a" "b" "c" "d"]}]]
@@ -23,7 +26,11 @@
                               "--num-msg" ["1"]
                               "--record-handling-opts" ["json"]}]]
                ["seek+ --by 2"
-                ["seek+" {"--by" ["2"]}]]]]
+                ["seek+" {"--by" ["2"]}]]
+               [(format "set-type-handler-config! --type-name protobuf --k %s --args %s %s" cfg-nm topic-nm cls-nm)
+                ["set-type-handler-config!" {"--type-name" ["protobuf"]
+                                             "--k" [cfg-nm]
+                                             "--args" [topic-nm cls-nm]}]]]]
     (doseq [[input-ln exp-map] cases]
       (let [parse-res (kcrm/parse-and-transform-input-line input-ln)]
         (is (= exp-map parse-res))))))

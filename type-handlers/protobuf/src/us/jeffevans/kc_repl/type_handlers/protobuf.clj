@@ -1,17 +1,14 @@
 (ns us.jeffevans.kc-repl.type-handlers.protobuf
   (:require
-    [clojure.java.io :as io]
     [clojure.string :as str]
     [clojure.tools.logging :as log]
     [us.jeffevans.kc-repl :as kcr])
-  (:import (java.lang Class)
-           (java.lang.reflect Method)
-           (com.google.protobuf.util JsonFormat)
+  (:import (com.google.protobuf Descriptors$FieldDescriptor$Type MessageOrBuilder)
            (io.confluent.kafka.schemaregistry.client CachedSchemaRegistryClient SchemaRegistryClient)
-           (io.confluent.kafka.schemaregistry SchemaProvider)
-           (io.confluent.kafka.serializers.protobuf KafkaProtobufDeserializer KafkaProtobufSerializer)
            (io.confluent.kafka.schemaregistry.protobuf ProtobufSchemaProvider)
-           (com.google.protobuf Descriptors$Descriptor Message DynamicMessage Message$Builder Descriptors$FileDescriptor Descriptors$FieldDescriptor Descriptors InvalidProtocolBufferException Descriptors$FieldDescriptor$Type MessageOrBuilder DescriptorProtos$FileDescriptorProto)))
+           (io.confluent.kafka.serializers.protobuf KafkaProtobufDeserializer)
+           (java.lang Class)
+           (java.lang.reflect Method)))
 
 (declare dummy)
 
@@ -23,13 +20,21 @@
 (defrecord ProtobufHandler [^SchemaRegistryClient sr-client ^KafkaProtobufDeserializer deser topic-nm-to-message-class]
   ProtobufHandlerProtocol
   (set-msg-class-for-topic! [_ topic message-class]
-    (swap! topic-nm-to-message-class assoc topic message-class)))
+    (let [msg-cls (condp instance? message-class
+                    String (Class/forName message-class)
+                    Class message-class
+                    (throw
+                      (ex-info
+                        (format "the value given for topic %s was a %s, but it must be a String or Class"
+                                topic
+                                (type message-class))
+                        {})))]
+      (swap! topic-nm-to-message-class assoc topic msg-cls))))
 
 
 (declare convert-field)
 
 (def ^:const topic-name-to-message-class-config "protobuf-topic-name-to-message-class")
-
 
 (defn- convert-message [message]
   (let [fields (into {} (.getAllFields message))]
@@ -56,8 +61,8 @@
   (convert-message protobuf-message))
 
 (defn- maybe-deserialize-from-class [^String topic ^bytes b topic-nm-to-message-class]
-  (doseq [[k v] @topic-nm-to-message-class]
-    (printf "%s (%s) -> %s (%s)" k (type k) v (type v)))
+  #_(doseq [[k v] @topic-nm-to-message-class]
+      (printf "%s (%s) -> %s (%s)" k (type k) v (type v)))
   (if-let [^Class msg-cls (get @topic-nm-to-message-class topic)]
     (let [^Method parse-fn (.getMethod msg-cls "parseFrom" (into-array Class [(type b)]))]
       (.invoke parse-fn nil (into-array Object [b])))
@@ -65,7 +70,6 @@
 
 (defn- add-config-vals-topic-nm-to-msg-class [handler args]
   (doseq [[topic-nm msg-cls] (partition 2 args)]
-    ;; TODO: validate, convert msg-cls to Class if string? or symbol?
     (set-msg-class-for-topic! handler topic-nm msg-cls)))
 
 
@@ -76,7 +80,7 @@
       (maybe-deserialize-from-class topic b (:topic-nm-to-message-class this))))
   (->clj [_ ^MessageOrBuilder msg]
     (convert-message msg))
-  (set-config! [this k & args]
+  (set-config! [this k args]
     (condp = k
       topic-name-to-message-class-config (add-config-vals-topic-nm-to-msg-class this args)
       (throw (IllegalArgumentException. (format "protobuf handler has no config named %s" k))))))

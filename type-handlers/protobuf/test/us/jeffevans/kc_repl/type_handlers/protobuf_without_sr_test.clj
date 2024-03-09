@@ -24,8 +24,7 @@
       tc/*kcr-client*
       "protobuf"
       pb/topic-name-to-message-class-config
-      protobuf-no-sr-data-topic
-      SensorReadingOuterClass$SensorReading)
+      [protobuf-no-sr-data-topic SensorReadingOuterClass$SensorReading])
     (let [records (kcr/read-from tc/*kcr-client* protobuf-no-sr-data-topic 0 pbt/*start-offset* (count pbt/test-data) "protobuf")]
       (is (= (map (partial reduce-kv
                            (fn [acc k* v*]
