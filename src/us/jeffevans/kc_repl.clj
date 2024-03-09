@@ -33,7 +33,7 @@
 (defprotocol type-handler
   (parse-bytes [this ^String topic ^bytes b])
   (->clj [this obj])
-  (set-config! [this k & args]))
+  (set-config! [this k args]))
 
 (defmulti create-type-handler (fn [type* & _]
                                 type*))
@@ -585,7 +585,8 @@
   (poll [this num-msg record-handling-opts])
   (stop [this])
   (current-assignments [this])
-  (set-type-handler-config! [this type-name k & args]))
+  (set-type-handler-config! [this type-name k args])
+  (get-type-handler-by-name [this nm]))
 
 (defrecord KCRClient [^KafkaConsumer consumer to-consumer-chan from-consumer-chan active-assignments-atom
                       last-read-records-atom type-handlers]
@@ -641,11 +642,13 @@
     (consumer-assigments consumer active-assignments-atom))
   (stop [_]
     (stop* to-consumer-chan))
-  (set-type-handler-config! [_ type-name k & args]
+  (set-type-handler-config! [_ type-name k args]
     #_(log/infof "type-name %s k %s v %s" type-name k v)
     (if-let [th (get type-handlers type-name)]
-      (set-config! th k & args)
+      (set-config! th k args)
       (throw (IllegalArgumentException. (format "no type handler found for %s" type-name)))))
+  (get-type-handler-by-name [_ nm]
+    (get type-handlers nm))
 
   AutoCloseable
   (close [_]
@@ -696,7 +699,12 @@
                    int #(Integer/parseInt %)
                    long #(Long/parseLong %)
                    nil)]
-    (cond-> {::arg-description (:doc m), ::arg-default (:default m), ::required? (::required? m), ::arg-name (::arg-name m)}
+    (cond-> {::arg-description (:doc m)
+             ::arg-default (:default m)
+             ::required? (::required? m)
+             ::arg-name (::arg-name m)
+             ::varargs? (::varargs? m)}
+
             (some? parse-fn)
             (assoc ::arg-parse-fn parse-fn))))
 
@@ -723,7 +731,7 @@
         op-desc       (:doc (meta nm))
         args-metadata (op-args->metadata op-args)]
     `(let [the-fn# (fn [& args#]
-                     (log/tracef "in the-fn# for %s, got args#" ~nm args#)
+                     (log/tracef "in the-fn# for %s, got args# %s" ~nm args#)
                      (let [op-fn# (partial ~nm ~kcr-client)]
                        (apply op-fn# args#)))]
           (intern ~(the-ns 'user) (quote ~nm) the-fn#)
@@ -752,7 +760,7 @@
                                       {:keys [::arg-name ::arg-parse-fn ::arg-default ::arg-description ::required? ::varargs?]} arg-metadata
                                       arg-nm (or arg-name (name arg))
                                       long-opt (str "--" arg-nm " " (str/upper-case arg-nm))]
-                                  (log/tracef "arg-metadata for %s: %s" (str (quote ~nm)) (pr-str arg-metadata))
+                                  (log/tracef "arg-metadata for %s: %s" arg-nm (pr-str arg-metadata))
                                   (-> (cond-> [(when required? (str "-" (first arg-nm))) long-opt arg-description
                                                :parse-fn arg-parse-fn]
                                               (some? arg-default)
@@ -829,10 +837,10 @@
              ^{:doc "Conditional (until) function; operates on the mapped record"} while-fn
              ^{:doc "Record handling options (see documentation)"} record-handling-opts)
       ;; will revisit this once we have a better Java args parser
-      (defop ^{:doc "Set a config option for a type handler"} set-type-handler-config! kcr-client true true
+      (defop ^{:doc "Set a config option for a type handler arr", ::print-offsets? false} set-type-handler-config! kcr-client true true
              ^{:doc "The type on which to set the config option", ::required? true} type-name
              ^{:doc "The config option's key", ::required? true} k
-             ^{:doc "The config option's arguments 2", ::required? true, ::varargs? true, ::test-whatev 1} args)
+             ^{:doc "The config option's arguments", ::required? true, ::varargs? true} args)
       (defop ^{:doc "Print the last read results"} last-read kcr-client true true)
       (defop ^{:doc "Stop the client and disconnect the session"} stop kcr-client true false)
       (intern (the-ns 'user) 'help print-clj-help)

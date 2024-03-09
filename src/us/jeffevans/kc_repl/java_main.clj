@@ -70,8 +70,9 @@
 (defn -main
   "Entrypoint for the uberjar (Java) main.
 
-  TODO: actually get it working"
-  [config-fname & more]
+  config-fname is the path to the Kafka consumer config file
+  final-callback is a function that will be executed after stop, with the kcr-client passed as the only arg"
+  [config-fname & [final-callback & _]]
   (log/infof "-main started with %s%n" config-fname)
 
   (thl/load-type-handlers)
@@ -106,5 +107,7 @@
                       (when print-offsets?
                         (kcr/print-assignments* (kcr/current-assignments kcr/*client*))))))))
 
-            (reset! continue? (not= "stop" op))))))))
+            (reset! continue? (not= "stop" op))))
+        (when-not (nil? final-callback)
+          (final-callback kcr/*client*))))))
 

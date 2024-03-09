@@ -72,7 +72,7 @@
       (maybe-deserialize-from-class topic b (:topic-nm-to-message-class this))))
   (->clj [_ ^MessageOrBuilder msg]
     (convert-message msg))
-  (set-config! [this k & args]
+  (set-config! [this k args]
     (condp = k
       topic-name-to-message-class-config (add-config-vals-topic-nm-to-msg-class this args)
       (throw (IllegalArgumentException. (format "protobuf handler has no config named %s" k))))))

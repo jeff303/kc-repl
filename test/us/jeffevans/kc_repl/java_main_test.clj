@@ -19,7 +19,7 @@
     (String. b StandardCharsets/UTF_8))
   (->clj [_ obj]
     obj)
-  (set-config! [this k & args]
+  (set-config! [this k args]
     (swap! (:k-to-args this) assoc k args)))
 
 (def ^:private ^:const test-type-handler-nm "test-set-config")
@@ -62,10 +62,13 @@
                                      (update-vals str))))]
         (.store props (io/writer prop-file) nil)
         (try
-          (kcrm/-main (.getAbsolutePath prop-file))
-          #_(println "java-cmds: " @#'kcr/java-cmds)
-          (let [java-cmds @#'kcr/java-cmds
-                final-lines (line-gathering-fn)]
+          (kcrm/-main (.getAbsolutePath prop-file)
+                      (fn [client]
+                        (let [th (kcr/get-type-handler-by-name client test-type-handler-nm)]
+                          (is (some? th))
+                          (let [k-to-args (:k-to-args th)]
+                            (is (= {"foo" ["bar1" "bar2" "bar3" "bar4"]} @k-to-args))))))
+          (let [final-lines (line-gathering-fn)]
             (is (= ["[\"test-topic\"]"
                     "[{\"foo\" 0}]"
                     "test-topic:0 at 1"
@@ -75,7 +78,10 @@
                     (str "[" (str/join " " (map #(format "{\"foo\" %d}" %) (range 5 15))) "]")
                     "test-topic:0 at 15"
                     "test-topic:0 at 0"
+                    "{\"foo\" [\"bar1\" \"bar2\" \"bar3\" \"bar4\"]}"
+                    "test-topic:0 at 0" ; TODO: fix print-offsets? - it doesn't seem to work
                     "true"] ; TODO: don't return true from last fn (::stop probably)
                    final-lines))))))))
+
 
 ;; TODO: add tests for the error messages generated from arg parsing (which can get hairy)
