@@ -1,7 +1,6 @@
 {:paths ["src" "resources"]
  :deps {io.confluent/kafka-protobuf-serializer {:mvn/version "7.5.1"}
-        com.google.protobuf/protobuf-java {:mvn/version "3.19.6"}
-        us.jeffevans/kc-repl {:local/root "../.."}}
+        com.google.protobuf/protobuf-java {:mvn/version "3.19.6"}}
  :mvn/repos
  {"confluent" {:url "https://packages.confluent.io/maven/"}}
  :aliases
@@ -10,7 +9,11 @@
                   ;; since we're building an app uberjar, we do not
                   ;; need deps-deploy for clojars.org deployment:
                   :deps/root "slim"}
-                 io.github.clojure/tools.build {:git/tag "v0.9.6" :git/sha "8e78bcc"}}
+                 io.github.clojure/tools.build {:git/tag "v0.9.6" :git/sha "8e78bcc"}
+
+                 ;; apparently this needs to go here to work well with Cursive
+                 ;; and not under the root :deps
+                 us.jeffevans/kc-repl {:local/root "../.."}}
           :ns-default build}
   :test-dependencies {:extra-paths ["test-resources"]
                       :extra-deps {org.testcontainers/testcontainers {:mvn/version "1.19.4"}
@@ -18,8 +21,9 @@
                                    org.apache.kafka/kafka-clients$test {:mvn/version "3.5.0"}
                                    org.apache.kafka/kafka_2.13$test {:mvn/version "3.5.0"}
                                    org.apache.kafka/kafka_2.13 {:mvn/version "3.5.0"}
-                                   org.apache.curator/curator-test {:mvn/version "2.9.0"}}}
-  :test {:extra-paths ["test" "test-java" "../../test" "target/classes"]
+                                   org.apache.curator/curator-test {:mvn/version "2.9.0"}
+                                   us.jeffevans.kc-repl/test-common {:local/root "../../test-common"}}}
+  :test {:extra-paths ["test" "test-java" "target/classes"]
          :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}
                       io.github.cognitect-labs/test-runner
                       {:git/tag "v0.5.0" :git/sha "48c3c67"}}

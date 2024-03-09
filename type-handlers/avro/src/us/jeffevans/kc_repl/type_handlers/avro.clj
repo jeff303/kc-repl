@@ -8,7 +8,6 @@
            (org.apache.avro Schema$Field)
            (org.apache.avro.generic GenericRecord)))
 
-
 (declare dummy)
 
 (def ^:const ^:private sr-url-prop "schema.registry.url")
