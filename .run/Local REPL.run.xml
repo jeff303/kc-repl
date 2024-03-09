@@ -1,0 +1,13 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Local REPL" type="ClojureREPL" factoryName="Local" activateToolWindowBeforeRun="false">
+    <option name="configVersion" value="1" />
+    <option name="displayName" value="Local REPL" />
+    <option name="execution" value="DEPS" />
+    <module name="kc-repl" />
+    <option name="options" value="-A:test-dependencies:type-handlers" />
+    <option name="profiles" />
+    <option name="VM_PARAMETERS" value="-Dclojure.compiler.disable-locals-clearing=true -Dclojure.core.async.pool-size=1" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <method v="2" />
+  </configuration>
+</component>

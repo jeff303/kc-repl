@@ -35,6 +35,7 @@
                       :extra-deps {org.testcontainers/kafka {:mvn/version "1.19.4"}
                                    org.testcontainers/testcontainers {:mvn/version "1.19.4"}
                                    org.apache.kafka/kafka_2.13 {:mvn/version "3.5.0"}
+                                   us.jeffevans.kc-repl/test-common {:local/root "test-common"}
                                    ;; TODO: figure out why the GitHub coordinate DOES NOT WORK
                                    ;;  io.github.findinpath/testcontainers-kafka-avro {:git/sha "943ae540e8db36a7515e5b454b71c7fdd54ea4b0"}}}
                                    findinpath/testcontainers-kafka-avro {:local/root "libs/testcontainers-kafka-avro-1.0-SNAPSHOT-tests.jar"}}}

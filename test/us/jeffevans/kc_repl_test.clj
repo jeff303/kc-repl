@@ -1,12 +1,11 @@
 (ns us.jeffevans.kc-repl-test
+  "Tests for the core kc-repl client"
   (:require [clojure.string :as str]
             [clojure.test :refer :all]
             [us.jeffevans.kc-repl :as kcr]
-            [us.jeffevans.kc-repl.test-common :as tc]
-            [clojure.tools.logging :as log])
+            [us.jeffevans.kc-repl.test-common :as tc])
   (:import (org.apache.kafka.common TopicPartition)
            (java.nio.charset StandardCharsets)))
-
 
 (use-fixtures :once tc/simple-kafka-container-fixture tc/kafka-test-topics-fixture)
 
