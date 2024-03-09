@@ -29,7 +29,9 @@
   ;; I want to include the extra-paths and extra-deps so that they will be loaded by Cursive
   ;; But if I do them under test, then I can't get the Cursive local nREPL invocation to *not*
   ;; actually launch the test runner.  I only want it to start nREPL with these dependencies
-  :test-dependencies {:extra-paths ["test" "type-handlers/avro/test-resources" "type-handlers/protobuf/target/classes"]
+  :test-dependencies {:extra-paths ["test"
+                                    "type-handlers/avro/test-resources"
+                                    "type-handlers/protobuf/target/classes"]
                       :extra-deps {org.testcontainers/kafka {:mvn/version "1.19.4"}
                                    org.testcontainers/testcontainers {:mvn/version "1.19.4"}
                                    org.apache.kafka/kafka_2.13 {:mvn/version "3.5.0"}

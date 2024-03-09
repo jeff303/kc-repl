@@ -5,7 +5,7 @@
 
 (deftest arg-parse-test
   (let [topic-nm "protobuf-data"
-        cls-nm   "us.jeffevans.kc_repl.testdata.SensorReadingOuterClass.SensorReading"
+        cls-nm   "us.jeffevans.kc_repl.testdata.SensorReadingOuterClass$SensorReading"
         cfg-nm   "protobuf-topic-name-to-message-class"
         cases [["dostuff -f a --bar \"baz man\" --zen a b c d"
                 ["dostuff" {"-f" ["a"]

@@ -20,7 +20,16 @@
 (defrecord ProtobufHandler [^SchemaRegistryClient sr-client ^KafkaProtobufDeserializer deser topic-nm-to-message-class]
   ProtobufHandlerProtocol
   (set-msg-class-for-topic! [_ topic message-class]
-    (swap! topic-nm-to-message-class assoc topic message-class)))
+    (let [msg-cls (condp instance? message-class
+                    String (Class/forName message-class)
+                    Class message-class
+                    (throw
+                      (ex-info
+                        (format "the value given for topic %s was a %s, but it must be a String or Class"
+                                topic
+                                (type message-class))
+                        {})))]
+      (swap! topic-nm-to-message-class assoc topic msg-cls))))
 
 
 (declare convert-field)
@@ -61,7 +70,6 @@
 
 (defn- add-config-vals-topic-nm-to-msg-class [handler args]
   (doseq [[topic-nm msg-cls] (partition 2 args)]
-    ;; TODO: validate, convert msg-cls to Class if string? or symbol?
     (set-msg-class-for-topic! handler topic-nm msg-cls)))
 
 
