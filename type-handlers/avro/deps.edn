@@ -1,5 +1,6 @@
 {:paths ["src" "resources"]
- :deps {io.confluent/kafka-avro-serializer {:mvn/version "7.2.1"}}
+ :deps {io.confluent/kafka-avro-serializer {:mvn/version "7.2.1"}
+        us.jeffevans.kc-repl/type-handlers {:local/root ".."}}
  :mvn/repos
  {"confluent" {:url "https://packages.confluent.io/maven/"}}
  :aliases
@@ -7,11 +8,7 @@
                  {:git/tag "v0.9.2" :git/sha "9c9f078"
                   ;; since we're building an app uberjar, we do not
                   ;; need deps-deploy for clojars.org deployment:
-                  :deps/root "slim"}
-
-                 ;; apparently this needs to go here to work well with Cursive
-                 ;; and not under the root :deps
-                 us.jeffevans/kc-repl {:local/root "../.."}}
+                  :deps/root "slim"}}
           :ns-default build}
   :test-dependencies {:extra-paths ["test" "test-resources"]
                       :extra-deps {org.testcontainers/testcontainers {:mvn/version "1.19.4"}
