@@ -2,7 +2,7 @@
   (:require
     [clojure.string :as str]
     [clojure.tools.logging :as log]
-    [us.jeffevans.kc-repl :as kcr])
+    [us.jeffevans.kc-repl.type-handlers :as th])
   (:import (io.confluent.kafka.schemaregistry.client CachedSchemaRegistryClient SchemaRegistryClient)
            (io.confluent.kafka.serializers KafkaAvroDeserializer)
            (org.apache.avro Schema$Field)
@@ -14,7 +14,7 @@
 
 (defrecord AvroHandler [^SchemaRegistryClient sr-client ^KafkaAvroDeserializer deser])
 
-(extend-protocol kcr/type-handler AvroHandler
+(extend-protocol th/type-handler AvroHandler
   (parse-bytes [this ^String topic ^bytes b]
     (let [^KafkaAvroDeserializer d (:deser this)]
       (.deserialize d topic b)))
@@ -27,7 +27,7 @@
               {}
               fields))))
 
-(defmethod kcr/create-type-handler "avro" [kc-props & _]
+(defmethod th/create-type-handler "avro" [kc-props & _]
   (let [sr-url (get kc-props sr-url-prop)]
     (if-not (str/blank? sr-url)
       (let [cache-sz  100

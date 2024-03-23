@@ -2,7 +2,7 @@
   (:require
     [clojure.string :as str]
     [clojure.tools.logging :as log]
-    [us.jeffevans.kc-repl :as kcr])
+    [us.jeffevans.kc-repl.type-handlers :as th])
   (:import (com.google.protobuf Descriptors$FieldDescriptor$Type MessageOrBuilder)
            (io.confluent.kafka.schemaregistry.client CachedSchemaRegistryClient SchemaRegistryClient)
            (io.confluent.kafka.schemaregistry.protobuf ProtobufSchemaProvider)
@@ -73,7 +73,7 @@
     (set-msg-class-for-topic! handler topic-nm msg-cls)))
 
 
-(extend-protocol kcr/type-handler ProtobufHandler
+(extend-protocol th/type-handler ProtobufHandler
   (parse-bytes [this ^String topic ^bytes b]
     (if-let [^KafkaProtobufDeserializer d (:deser this)]
       (.deserialize d topic b)
@@ -85,7 +85,7 @@
       topic-name-to-message-class-config (add-config-vals-topic-nm-to-msg-class this args)
       (throw (IllegalArgumentException. (format "protobuf handler has no config named %s" k))))))
 
-(defmethod kcr/create-type-handler "protobuf" [kc-props & _]
+(defmethod th/create-type-handler "protobuf" [kc-props & _]
   (let [sr-url (get kc-props sr-url-prop)]
     (if-not (str/blank? sr-url)
       (let [cache-sz  100

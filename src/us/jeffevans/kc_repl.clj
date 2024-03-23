@@ -10,6 +10,7 @@
     [clojure.string :as str]
     [clojure.tools.logging :as log]
     [nrepl.cmdline :as n.c]
+    [us.jeffevans.kc-repl.type-handlers :as th]
     [us.jeffevans.kc-repl.type-handler-load :as thl])
   (:import
     (clojure.lang IPersistentMap)
@@ -30,23 +31,10 @@
 
 (defonce ^:private type-handler-create-fns {})
 
-(defprotocol type-handler
-  (parse-bytes [this ^String topic ^bytes b])
-  (->clj [this obj])
-  (set-config! [this k args]))
-
-(defmulti create-type-handler (fn [type* & _]
-                                type*))
-
-(defmulti parse-type
-          "A multimethod to handle parsing a byte array, which can be of various ConsumerRecord key or value types"
-          (fn [type* & _]
-            type*))
-
-(defmethod parse-type "json" [_ b]
+(defmethod th/parse-type "json" [_ b]
   (json/read-str (String. b StandardCharsets/UTF_8) :keywordize? true))
 
-(defmethod parse-type "text" [_ b]
+(defmethod th/parse-type "text" [_ b]
   (String. b StandardCharsets/UTF_8))
 
 (defn- headers->clj
@@ -60,14 +48,14 @@
 
 (defn- parse-type-fn-with-handlers [^String type-name type-handlers]
   (if-let [handler (get type-handlers type-name)]
-    (partial parse-bytes handler)
+    (partial th/parse-bytes handler)
     (throw (ex-info (format "no type handler registered for %s" type-name) {::type-handler-keys (keys type-handlers)}))))
 
 (defn- make-default-record-handler-fn [^String value-type type-handlers]
   (fn [^ConsumerRecord cr]
     (if-let [handler (get type-handlers value-type)]
-      (let [parsed (parse-bytes handler (.topic cr) (.value cr))]
-        (->clj handler parsed))
+      (let [parsed (th/parse-bytes handler (.topic cr) (.value cr))]
+        (th/->clj handler parsed))
       (throw (ex-info (format "no type handler registered for %s, a %s" value-type (type value-type)) {::type-handler-keys (keys type-handlers)})))))
 
 (defn- make-record-handler-fn [{:keys [::key-type ::key-parse-fn ::value-type ::value-parse-fn ::map-record-fn
@@ -537,7 +525,7 @@
 
 (defrecord JsonHandler [])
 
-(extend-protocol type-handler JsonHandler
+(extend-protocol th/type-handler JsonHandler
   (parse-bytes [_ _ ^bytes b]
     (json/read-str (String. b StandardCharsets/UTF_8) :keywordize? true))
   (->clj [_ obj] ;;TODO: figure out how to do a default impl of this one
@@ -546,11 +534,11 @@
     (throw (UnsupportedOperationException. "json handler has no configs to set"))))
 
 
-(defmethod create-type-handler "json" [& _] (JsonHandler.))
+(defmethod th/create-type-handler "json" [& _] (JsonHandler.))
 
 (defrecord TextHandler [])
 
-(extend-protocol type-handler TextHandler
+(extend-protocol th/type-handler TextHandler
   (parse-bytes [_ _ ^bytes b]
     (String. b StandardCharsets/UTF_8))
   (->clj [_ obj]
@@ -558,7 +546,7 @@
   (set-config! [& _]
     (throw (UnsupportedOperationException. "text handler has no configs to set"))))
 
-(defmethod create-type-handler "text" [& _] (TextHandler.))
+(defmethod th/create-type-handler "text" [& _] (TextHandler.))
 
 
 (defn clj-main-entrypoint
@@ -645,7 +633,7 @@
   (set-type-handler-config! [_ type-name k args]
     #_(log/infof "type-name %s k %s v %s" type-name k v)
     (if-let [th (get type-handlers type-name)]
-      (set-config! th k args)
+      (th/set-config! th k args)
       (throw (IllegalArgumentException. (format "no type handler found for %s" type-name)))))
   (get-type-handler-by-name [_ nm]
     (get type-handlers nm))
@@ -679,7 +667,7 @@
         ths (reduce-kv (fn [acc t f]
                          (assoc acc t (f props)))
                        {}
-                       (methods create-type-handler))]
+                       (methods th/create-type-handler))]
 
     (log/infof "starting with type handlers %s" (keys ths))
     (->KCRClient consumer (a/chan 1) (a/chan 1) (atom #{}) (atom {}) ths)))

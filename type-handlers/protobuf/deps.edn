@@ -1,6 +1,7 @@
 {:paths ["src" "resources"]
  :deps {io.confluent/kafka-protobuf-serializer {:mvn/version "7.5.1"}
-        com.google.protobuf/protobuf-java {:mvn/version "3.19.6"}}
+        com.google.protobuf/protobuf-java {:mvn/version "3.19.6"}
+        us.jeffevans.kc-repl/type-handlers {:local/root ".."}}
  :mvn/repos
  {"confluent" {:url "https://packages.confluent.io/maven/"}}
  :aliases
@@ -9,11 +10,7 @@
                   ;; since we're building an app uberjar, we do not
                   ;; need deps-deploy for clojars.org deployment:
                   :deps/root "slim"}
-                 io.github.clojure/tools.build {:git/tag "v0.9.6" :git/sha "8e78bcc"}
-
-                 ;; apparently this needs to go here to work well with Cursive
-                 ;; and not under the root :deps
-                 us.jeffevans/kc-repl {:local/root "../.."}}
+                 io.github.clojure/tools.build {:git/tag "v0.9.6" :git/sha "8e78bcc"}}
           :ns-default build}
   :test-dependencies {:extra-paths ["test-resources"]
                       :extra-deps {org.testcontainers/testcontainers {:mvn/version "1.19.4"}
