@@ -1,26 +1,46 @@
 (ns build
-  (:refer-clojure :exclude [test])
-  (:require [org.corfield.build :as bb]))
+  (:require [clojure.tools.build.api :as b]))
 
 (def lib 'net.clojars.jeff_evans/kc-repl)
-(def version "1.1.0")
+(def version (format "1.1.%s" (b/git-count-revs nil)))
+(def class-dir "target/classes")
+(def src-jar-file (format "target/%s-%s.jar" (name lib) version))
+(def uberjar-file (format "target/%s-%s-standalone.jar" (name lib) version))
+(def basis (delay (b/create-basis {:project "deps.edn"})))
 (def main 'us.jeffevans.kc-repl.java-main)
 
-(defn test "Run the tests." [opts]
-  (bb/run-tests opts))
+(defn clean [_]
+      (b/delete {:path "target"}))
 
-(defn clean "Clean the output." [opts]
-  (bb/clean opts))
+(defn jar [_]
+      (b/write-pom {:class-dir class-dir
+                    :lib lib
+                    :version version
+                    :basis @basis
+                    :src-dirs ["src"]})
+      (b/copy-dir {:src-dirs ["src" "resources"]
+                   :target-dir class-dir})
+      (b/jar {:class-dir class-dir
+              :jar-file  src-jar-file}))
 
-(defn ci "Run the CI pipeline of tests (and build the uberjar)." [opts]
-  (-> opts
-      (assoc :lib lib :version version :main main)
-      (bb/run-tests)
-      (bb/clean)
-      (bb/uber)))
+(defn uberjar [_]
+      (clean nil)
+      (b/copy-dir {:src-dirs ["src" "resources"]
+                   :target-dir class-dir})
+      (b/compile-clj {:basis @basis
+                      :ns-compile [main]
+                      :class-dir class-dir})
+      (b/uber {:class-dir class-dir
+               :uber-file uberjar-file
+               :basis @basis
+               :main main}))
 
-(defn uberjar "Just build the uberjar" [opts]
-  (-> opts
-      (assoc :lib lib :version version)
-      (bb/clean)
-      (bb/uber)))
+(defn run-tests [_]
+  (b/copy-dir {:src-dirs ["resources"]
+               :target-dir class-dir})
+  (b/compile-clj {:basis @basis
+                  :ns-compile [main]
+                  :class-dir class-dir})
+  (let [{:keys [exit] :as res} (b/process {:command-args ["clj" "-M:test:test-dependencies:type-handlers"]})]
+    (when-not (zero? exit)
+      (throw (ex-info (str "run-tests failed") res)))))
