@@ -1,47 +1,48 @@
 (ns build
-  (:refer-clojure :exclude [test])
-  (:require [org.corfield.build :as bb]
-            [clojure.tools.build.api :as b]
-            [clojure.java.shell :as sh]))
+  (:require [clojure.tools.build.api :as b]))
 
 (def lib 'net.clojars.jeff_evans/kc-repl-type-handler-protobuf)
-(def version "1.1.0")
-
+(def version (format "1.1.%s" (b/git-count-revs nil)))
+(def class-dir "target/classes")
+(def src-jar-file (format "target/%s-%s-protobuf-handler-src.jar" (name lib) version))
+(def uberjar-file (format "target/%s-%s-protobuf-handler.jar" (name lib) version))
 (def basis (delay (b/create-basis {:project "deps.edn"})))
-(defn compile-java [& _]
-      (b/delete {:path "target"})
-      (b/javac {:src-dirs  ["test-java"]
+
+(defn clean [_]
+      (b/delete {:path "target"}))
+
+(defn compile-test-java [_]
+      (b/javac {:src-dirs ["test-java"]
+                :class-dir class-dir
                 :basis @basis
-                :class-dir "target/classes"}))
-(defn protoc-compile "Compile test data protobufs" [opts]
-      (let [cmd (format "/usr/local/bin/protoc -I=/usr/include \\
-                                               -I=/usr/local/include \\
-                                               -I=test-resources/proto \\
-                                               --java_out=test-java \\
-                                               test-resources/proto/us/jeffevans/testdata/*.proto")
-            result (sh/sh cmd)]
-           (println (str "Command output: " (:out result)))
-           (println (str "Command error: " (:err result))
-                    (println (str "Exit code: " (:exit result))))))
-(defn test "Run the tests." [opts]
-  (bb/run-tests opts))
+                :javac-opts ["--release" "17"]}))
+(defn jar [_]
+      (b/write-pom {:class-dir class-dir
+                    :lib lib
+                    :version version
+                    :basis @basis
+                    :src-dirs ["src"]})
+      (b/copy-dir {:src-dirs ["src" "resources"]
+                   :target-dir class-dir})
+      (b/jar {:class-dir class-dir
+              :jar-file  src-jar-file}))
 
-(defn print-classpath [opts]
-  (let [classpath (System/getProperty "java.class.path")]
-    (println "Current CLASSPATH:")
-    (println classpath)))
+(defn uberjar [_]
+      (clean nil)
+      (b/copy-dir {:src-dirs ["src" "resources"]
+                   :target-dir class-dir})
+      (b/compile-clj {:basis @basis
+                      :class-dir class-dir})
+      (b/uber {:class-dir class-dir
+               :uber-file uberjar-file
+               :basis @basis}))
 
-
-(defn ci "Run the CI pipeline of tests (and build the uberjar)." [opts]
-  (let [full-opts (assoc opts :lib lib :version version :transitive true)]
-    (bb/clean full-opts)
-    (compile-java)
-    (-> full-opts
-        (bb/run-tests)
-        (bb/uber))))
-
-(defn uberjar "Just build the uberjar" [opts]
-      (-> opts
-          (assoc :lib lib :version version)
-          (bb/clean)
-          (bb/uber)))
+(defn run-tests [_]
+  (compile-test-java nil)
+  (b/copy-dir {:src-dirs ["resources"]
+               :target-dir class-dir})
+  (b/compile-clj {:basis @basis
+                  :class-dir class-dir})
+  (let [{:keys [exit] :as res} (b/process {:command-args ["clj" "-M:test:test-dependencies"]})]
+    (when-not (zero? exit)
+      (throw (ex-info (str "run-tests failed") res)))))
