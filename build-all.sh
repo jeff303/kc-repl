@@ -2,9 +2,11 @@
 
 for s in "avro" "protobuf"; do
   pushd type-handlers/$s
-  clojure -J-Dclojure.core.async.pool-size=1 -T:build ci '{:aliases [:test-dependencies :type-handlers]}'
+  echo "running tests and building uberjar for $s type handler"
+  clj -T:build:test:test-dependencies run-tests && clj -T:build uberjar
   popd
 done
 
-clojure -J-Dclojure.core.async.pool-size=1 -T:build ci '{:aliases [:test-dependencies :type-handlers]}'
+echo "running tests and building uberjar for kc-repl main"
+clj -T:build:test:type-handlers:test-dependencies run-tests && clj -T:build:type-handlers uberjar
 
