@@ -17,8 +17,10 @@
 
 (def ^:dynamic *start-offset* 0)
 
-(def test-data [{::deviceId 1, ::reading 10.0, ::timestamp 1676231420000}
-                {::deviceId 13, ::reading 17.9, ::timestamp 1676231438000}])
+(def test-data [{::deviceId 1, ::reading 10.0, ::timestamp 1676231420000,
+                 ::deviceMetadata {"category" "scientific", "mfrName" "acme"}}
+                {::deviceId 13, ::reading 17.9, ::timestamp 1676231438000,
+                 ::deviceMetadata {"category" "consumer", "mfrName" "Aerotyne International"}}])
 
 (defn test-avro-data-fixture [f]
   (with-open [schema-reader (io/input-stream (io/resource "sensor-reading.avsc"))]
@@ -33,11 +35,19 @@
           producer       (KafkaProducer. producer-props)]
       (.createTopics tc/*kafka-admin* [(NewTopic. "sensor-readings" 1 (short 1))])
       (.register sr-client (str topic-nm "-value") (AvroSchema. schema) true)
-      (let [start-offset (reduce (fn [min-offset {did ::deviceId, r ::reading, ts ::timestamp}]
-                                   (let [record     (doto (GenericData$Record. schema)
+      (let [start-offset (reduce (fn [min-offset {did ::deviceId, r ::reading, ts ::timestamp,
+                                                  dmd ::deviceMetadata}]
+                                   (let [dMdSch     (-> schema
+                                                        (.getField "deviceMetadata")
+                                                        .schema)
+                                         deviceMd   (doto (GenericData$Record. dMdSch)
+                                                      (.put "mfrName" (get dmd "mfrName"))
+                                                      (.put "category" (get dmd "category")))
+                                         record     (doto (GenericData$Record. schema)
                                                       (.put "deviceId" did)
                                                       (.put "reading" r)
-                                                      (.put "timestamp" ts))
+                                                      (.put "timestamp" ts)
+                                                      (.put "deviceMetadata" deviceMd))
                                          record-md @(.send producer (ProducerRecord. topic-nm
                                                                                      nil
                                                                                      nil

@@ -19,6 +19,17 @@
       {
          "name":"timestamp",
          "type": {"type": "long", "logicalType": "timestamp-millis"}
+      },
+      {
+         "name": "deviceMetadata",
+         "type": {
+            "type": "record",
+            "name": "DeviceMetadata",
+            "fields": [
+                         {"name": "mfrName", "type": "string"},
+                         {"name": "category", "type": "string"}
+                      ]
+            }
       }
    ]
 }
