@@ -46,9 +46,13 @@
             {}
             (.toArray headers))))
 
-(defn- parse-type-fn-with-handlers [^String type-name type-handlers]
+(defn- parse-type-fn-with-handlers [^String type-name type-handlers v->clj?]
   (if-let [handler (get type-handlers type-name)]
-    (partial th/parse-bytes handler)
+    (if v->clj?
+      (fn [topic v]
+        (->> (th/parse-bytes handler topic v)
+             (th/->clj handler)))
+      (partial th/parse-bytes handler))
     (throw (ex-info (format "no type handler registered for %s" type-name) {::type-handler-keys (keys type-handlers)}))))
 
 (defn- make-default-record-handler-fn [^String value-type type-handlers]
@@ -60,12 +64,12 @@
 
 (defn- make-record-handler-fn [{:keys [::key-type ::key-parse-fn ::value-type ::value-parse-fn ::map-record-fn
                                        ::include-headers? ::include-topic? ::include-partition? ::include-offset?
-                                       ::include-timestamp?] :as record-handling} type-handlers]
+                                       ::include-timestamp? ::key->clj? ::val->clj?] :as record-handling} type-handlers]
   (let [k-parse-fn (cond (fn? key-parse-fn)
                          key-parse-fn
 
                          (some? key-type)
-                         (parse-type-fn-with-handlers key-type type-handlers)
+                         (parse-type-fn-with-handlers key-type type-handlers key->clj?)
 
                          ;; by default, don't try to parse the key
                          true
@@ -74,7 +78,7 @@
                          value-parse-fn
 
                          (some? value-type)
-                         (parse-type-fn-with-handlers value-type type-handlers)
+                         (parse-type-fn-with-handlers value-type type-handlers val->clj?)
 
                          ;; by default, don't try to parse the value
                          true
@@ -247,9 +251,24 @@
           (print beg))))
     (idle-poll! consumer)))
 
+(defn- remove-consumer-assignment!
+  "Removes the given `assignment` (a TopicPartition) from the given `consumer`. If the consumer did not already
+  have it assigned, this is a no-op."
+  [active-assignments-atom ^KafkaConsumer consumer assignments]
+  (doseq [topic (keys assignments)]
+    (let [[part]          (get assignments topic)
+          tp              (TopicPartition. topic part)
+          cur-assignments (set (.assignment consumer))]
+      (swap! active-assignments-atom disj tp)
+      (when (contains? cur-assignments tp)
+        (let [new-assignments (disj cur-assignments tp)]
+          (.assign consumer new-assignments)))))
+  (idle-poll! consumer)
+  ::ok)
+
 (defn- assign-and-seek! [^KafkaConsumer consumer assignments active-assignments-atom]
   (doseq [topic (keys assignments)]
-    (let [[part offset?] (get assignments topic)
+    (let [[part ^long offset?] (get assignments topic)
           tp             (TopicPartition. topic part)]
       (add-consumer-assignment! active-assignments-atom consumer tp true)
       (if (some? offset?)
@@ -259,6 +278,10 @@
 (defmethod handle-repl->client-message ::assign [^KafkaConsumer consumer {:keys [::active-assignments-atom
                                                                                  ::new-assignment]}]
   (assign-and-seek! consumer new-assignment active-assignments-atom))
+
+(defmethod handle-repl->client-message ::unassign [^KafkaConsumer consumer {:keys [::active-assignments-atom
+                                                                                   ::remove-assignments]}]
+  (remove-consumer-assignment! active-assignments-atom consumer remove-assignments))
 
 (defmethod handle-repl->client-message ::seek [^KafkaConsumer consumer
                                                {:keys [::active-assignments-atom
@@ -428,6 +451,13 @@
                                                            ::active-assignments-atom active-assignments-atom
                                                            ::new-assignment {topic [partition offset?]}}))
 
+(defn- unassign!
+  ""
+  [to-consumer-chan from-consumer-chan active-assignments-atom topic partition & [offset?]]
+  (consumer-roundtrip to-consumer-chan from-consumer-chan {::message-type ::unassign
+                                                           ::active-assignments-atom active-assignments-atom
+                                                           ::remove-assignments {topic [partition]}}))
+
 
 (s/def ::consumer-record-map-fn fn?)
 (s/def ::poll-xf-reducing-fn fn?)
@@ -491,11 +521,20 @@
 (s/def ::value-type string?)
 (s/def ::key-parse-fn fn?)
 (s/def ::value-parse-fn fn?)
+
+(s/def ::key->clj? boolean?)
+(s/def ::val->clj? boolean?)
 (s/def ::map-record-fn fn?)
+
+(s/def ::include-headers? boolean?)
+(s/def ::include-topic? boolean?)
+(s/def ::include-partition? boolean?)
+(s/def ::include-offset? boolean?)
+(s/def ::include-timestamp? boolean?)
 (s/def ::reducing-fn fn?)
 
 (s/def ::record-handling-opts (s/keys :opt [::key-type ::value-type ::key-parse-fn ::value-parse-fn ::map-record-fn
-                                            ::reducing-fn]))
+                                            ::reducing-fn ::key->clj? ::val->clj?]))
 
 (defn record-handling-opts->poll-xf-args
   "For the given record-handling-opts, and type-handlers, produce a poll-xf-args map, which can then be passed into a
@@ -563,6 +602,7 @@
   (read-from [this topic part offset num-msg record-handling-opts])
   (last-read [this record-handling-opts])
   (assign [this topic part offset])
+  (unassign [this topic part])
   (seek [this offset])
   (seek+ [this offset+])
   (seek- [this offset-])
@@ -594,6 +634,8 @@
     (last-read* last-read-records-atom record-handling-opts type-handlers))
   (assign [_ topic part offset]
     (assign! to-consumer-chan from-consumer-chan active-assignments-atom topic part offset))
+  (unassign [_ topic part]
+    (unassign! to-consumer-chan from-consumer-chan active-assignments-atom topic part))
   (seek [_ offset]
     (seek! to-consumer-chan from-consumer-chan {::active-assignments-atom active-assignments-atom
                                                 ::to offset}))
@@ -804,7 +846,7 @@
              ^long ^{:doc "The offset to start reading from", :default 0} offset
              ^long ^{:doc "The number of messages to read", :default 10} num-msg
              ;; TODO: figure out how to get by with something like msg-format instead of record-handling-opts in Java
-             ^{:doc "Record handling options (see documentation)"} record-handling-opts)
+             ^{:doc "Record handling options (see documentation)", ::required? true} record-handling-opts)
       (defop ^{:doc "Read from the current active assignments"} poll kcr-client true true
              ^long ^{:doc "The number of messages to read", :default 10} num-msg
              ^{:doc "Record handling options (see documentation)", ::required? true} record-handling-opts)
@@ -812,6 +854,9 @@
              ^{:doc "The topic name to read from", ::required? true} topic
              ^long ^{:doc "The topic partition to read from", ::required? true} part
              ^long ^{:doc "The offset to start reading from", ::required? true} offset)
+      (defop ^{:doc "Remove a topic/partition from the active assignments"} unassign kcr-client true true
+             ^{:doc "The topic name to read from", ::required? true} topic
+             ^long ^{:doc "The topic partition to read from", ::required? true} part)
       (defop ^{:doc "Change the offset to poll from next for the given topic/partition"} seek kcr-client true true
              ^long ^{:doc "The offset to seek to", ::required? true} offset)
       (defop ^{:doc "Increment the offset for the current assignment by the given amount"} seek+ kcr-client true true
@@ -820,16 +865,17 @@
              ^long ^{:doc "The number of offsets to recede by", ::required? true} by)
       (defop ^{:doc "Seek forward in the message stream while some condition is met"} seek-while kcr-client false false
              ^{:doc "Conditional (while) function; operates on the mapped record"} while-fn
-             ^{:doc "Record handling options (see documentation)"} record-handling-opts)
+             ^{:doc "Record handling options (see documentation)", ::required? true} record-handling-opts)
       (defop ^{:doc "Seek forward in the message stream while some condition is met"} seek-until kcr-client false false
              ^{:doc "Conditional (until) function; operates on the mapped record"} while-fn
-             ^{:doc "Record handling options (see documentation)"} record-handling-opts)
+             ^{:doc "Record handling options (see documentation)", ::required? true} record-handling-opts)
       ;; will revisit this once we have a better Java args parser
       (defop ^{:doc "Set a config option for a type handler arr", ::print-offsets? false} set-type-handler-config! kcr-client true true
              ^{:doc "The type on which to set the config option", ::required? true} type-name
              ^{:doc "The config option's key", ::required? true} k
              ^{:doc "The config option's arguments", ::required? true, ::varargs? true} args)
-      (defop ^{:doc "Print the last read results"} last-read kcr-client true true)
+      (defop ^{:doc "Print the last read results"} last-read kcr-client true true
+             ^{:doc "Record handling options (see documentation)", ::required? true} record-handling-opts)
       (defop ^{:doc "Stop the client and disconnect the session"} stop kcr-client true false)
       (intern (the-ns 'user) 'help print-clj-help)
       (when (ifn? run-body)

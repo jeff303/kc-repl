@@ -8,7 +8,7 @@
 
 (def tc-cfg (TestcontainersConfiguration/getInstance))
 
-(def ^:const cp-version "The Confluent Platform base version, to use for container images" "7.1.0")
+(def ^:const cp-version "The Confluent Platform base version, to use for container images" "7.2.0")
 
 (def zk-network-alias "zookeeper")
 

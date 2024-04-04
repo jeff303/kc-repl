@@ -1,5 +1,4 @@
-(ns us.jeffevans.kc-repl.type-handlers
-  (:gen-class :name us.jeffevans.KcRepl))
+(ns us.jeffevans.kc-repl.type-handlers)
 
 (defprotocol type-handler
              (parse-bytes [this ^String topic ^bytes b])
