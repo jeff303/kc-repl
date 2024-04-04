@@ -16,8 +16,9 @@
     (require (symbol type-handler-ns))))
 
 (defn load-type-handlers []
-  (log/debug "trying to load type handlers from jars")
+  (log/debugf "trying to load type handlers from jars")
   (doseq [^JarFile jar-file (cp/classpath-jarfiles)]
+    (log/debugf "checking jar: %s" (.getName jar-file))
     (doseq [entry (-> (.entries jar-file)
                       enumeration-seq)]
       (when (= marker-file-nm (.getName entry))

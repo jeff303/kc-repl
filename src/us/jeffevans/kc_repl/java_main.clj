@@ -5,7 +5,7 @@
             [us.jeffevans.kc-repl :as kcr]
             [us.jeffevans.kc-repl.type-handler-load :as thl]
             [instaparse.core :as insta])
-  (:gen-class :name us.jeffevans.KcRepl))
+  (:gen-class))
 
 (defn- get-input-line []
   (read-line))
@@ -81,7 +81,7 @@
       (let [continue? (atom true)]
         (while @continue?
           (let [input       (get-input-line)
-                [op & args] (if (nil? input) ["stop"] (parse-line-as-cli-args input))
+                [op & args] (if (str/blank? input) ["stop"] (parse-line-as-cli-args input))
                 {:keys [::kcr/invoke-fn ::kcr/opts-spec ::kcr/print-offsets?]} (get @#'kcr/java-cmds op)]
             (log/tracef "got input %s, op %s, args %s, opts-spec %s" input op (pr-str args) (pr-str opts-spec))
             (println)

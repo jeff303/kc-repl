@@ -136,5 +136,10 @@
                               ::kcr/reducing-fn      reducing-fn
                               ::kcr/map-record-fn    map-rec-fn})))
       (testing " and the new offset is correct (we should now be at offset 10 for test-topic:0)"
-        (is (= {(TopicPartition. "test-topic" 0) [10 true]} (kcr/current-assignments tc/*kcr-client*)))))))
+        (is (= {(TopicPartition. "test-topic" 0) [10 true]} (kcr/current-assignments tc/*kcr-client*))))
+      (testing " and we can unassign the test-topic:0 assignment and switch to test-topic:1"
+        ;; read from partition 1 to add that to active assignments
+        (kcr/read-from tc/*kcr-client* "test-topic" 1 0 1 "json")
+        (kcr/unassign tc/*kcr-client* "test-topic" 0)
+        (is (= {(TopicPartition. "test-topic" 1) [0 true]} (kcr/current-assignments tc/*kcr-client*)))))))
 
