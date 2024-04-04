@@ -83,6 +83,8 @@ record handling.
  ::kcr/value-type       "json"       ; the format the value should be parsed in (optional)
  ::kcr/value-parse-fn   (fn [b] nil) ; a custom function to parse the value (passed as a byte array)
                                      ; if both are omitted, the value won't be parsed
+ ::kcr/key->clj?          true       ; if true, the key will be converted to a Clojure map after parsing the bytes
+ ::kcr/val->clj?          true       ; if true, the value will be converted to a Clojure map after parsing the bytes 
  ::kcr/include-headers?   true       ; whether to include message headers in extra-metadata
  ::kcr/include-offset?    true       ; whether to include the message offset in extra-metadata
  ::kcr/include-partition? true       ; whether to include the PartitionInfo in extra-metadata
@@ -159,7 +161,16 @@ can simply be ignored/not passed along from the `map-record-fn`
 There is an uberjar build of `kc-repl` that is capable of running basic operations using `java`.  To use this mode,
 download (or build) the uberjar, then run:
 
-`java -Dclojure.core.async.pool-size=1 -jar kc-repl-*.jar /path/to/consumer.properties`
+#### Without Custom Type Handlers
+
+```shell
+java -Dclojure.core.async.pool-size=1 -jar target/kc-repl-<version>-standalone.jar /path/to/client.properties
+```
+
+#### With Custom Type Handlers
+```shell
+rlwrap java -Dclojure.core.async.pool-size=1 -cp type-handlers/avro/target/kc-repl-type-handler-avro-<version>-avro-handler.jar:target/kc-repl-<version>-standalone.jar us.jeffevans.kc_repl.java_main /path/to/client.properties
+```
 
 The syntax for the Java runtime is more similar to the original Kafka command line tools.  You can type `help` for a
 more complete list.
@@ -186,11 +197,13 @@ advancing, such as `seek-while` and `seek-until`).
 
 #### Extension
 
-The current key and message types that can be parsed are limited (only text and JSON).  There is a multimethod,
-`parse-type`, that provides an extension point through which parsing of new types can be supported.  In the future,
-support for some of these will be added to this project (as submodules that can be built separately and loaded as
-needed).  In theory, any Clojure code that defines a new method for this multimethod can take advantage of this
-mechanism to read additional types (provided the bytecode is available on the classpath).
+The base implementation supports type handling for text and json data.  Additional type handlers can be added by:
+* extending the `us.jeffevans.kc-repl.type-handlers/type-handler` protocol
+* defining a `us.jeffevans.kc-repl.type-handlers/create-type-handler` multimethod implementation
+* adding a `kc-repl-handler-ns.txt` file to your classpath (ex: in `resources`) that indicates the namespace that
+  should be loaded to allow for this type handler to be picked up at runtime
+
+Refer to the `avro` and `protobuf` implementations under `type-handlers` for reference implementations.
 
 ### Building the Uberjar
 `clojure -J-Dclojure.core.async.pool-size=1 -T:build ci`
@@ -201,6 +214,12 @@ mechanism to read additional types (provided the bytecode is available on the cl
 ### Roadmap and Bugs
 
 Bugs and enhancement requests will be tracked in the GitHub project (via issues).
+
+## Demo Videos
+
+* [Java Main demo](https://www.loom.com/share/15844e1d06454adfb43ba0652788505f?sid=8ced88db-9867-4034-ac0b-75c7191760f4)
+* [Clojure nREPL demo - mapping and reduction with Avro data](https://www.loom.com/share/27f35ee3788d48f08aef3fb5f69e888a?sid=7df588c1-1c15-40f7-8118-4ae6d7bee7a1)
+* [Clojure nREPL demo - conditional seeking with Avro data](https://www.loom.com/share/10855fbf73eb44f09333dea2a6095553?sid=532c2667-8d58-4f2e-9317-c3c48baf611b)
 
 ## License
 
