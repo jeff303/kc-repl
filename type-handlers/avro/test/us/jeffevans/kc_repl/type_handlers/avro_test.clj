@@ -68,7 +68,7 @@
 ;; need one of these per test since they might run in parallel
 (use-fixtures :each tc/kcr-client-fixture)
 
-(deftest avro-handling-testc
+(deftest avro-handling-test
   ;; require to force the type handler to be registered
   (require '[us.jeffevans.kc-repl.type-handlers.avro])
   (testing "list-topics works as expected"
