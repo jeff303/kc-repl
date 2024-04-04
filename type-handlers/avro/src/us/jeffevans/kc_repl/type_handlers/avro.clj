@@ -6,7 +6,8 @@
   (:import (io.confluent.kafka.schemaregistry.client CachedSchemaRegistryClient SchemaRegistryClient)
            (io.confluent.kafka.serializers KafkaAvroDeserializer)
            (org.apache.avro Schema$Field)
-           (org.apache.avro.generic GenericRecord)))
+           (org.apache.avro.generic GenericRecord)
+           (org.apache.avro.util Utf8)))
 
 (declare dummy)
 
@@ -18,12 +19,21 @@
   (parse-bytes [this ^String topic ^bytes b]
     (let [^KafkaAvroDeserializer d (:deser this)]
       (.deserialize d topic b)))
-  (->clj [_ ^GenericRecord obj]
+  (->clj [this ^GenericRecord obj]
     (let [schema (.getSchema obj)
           fields (.getFields schema)]
       (reduce (fn [acc ^Schema$Field field]
-                (let [fnm (.name field)]
-                  (assoc acc fnm (.get obj fnm))))
+                (let [fnm (.name field)
+                      v*  (.get obj fnm)
+                      v   (condp instance? v*
+                            GenericRecord
+                            (th/->clj this v*)
+
+                            Utf8
+                            (.toString v*)
+
+                            v*)]
+                    (assoc acc fnm v)))
               {}
               fields))))
 

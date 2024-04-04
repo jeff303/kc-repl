@@ -2,6 +2,7 @@ version: '3'
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
+    platform: linux/arm64
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -10,6 +11,7 @@ services:
 
   kafka-broker-1:
     image: confluentinc/cp-kafka:latest
+    platform: linux/arm64
     hostname: kafka-broker-1
     ports:
       - "19092:19092"
@@ -24,6 +26,7 @@ services:
 
   schema-registry:
     image: confluentinc/cp-schema-registry:latest
+    platform: linux/arm64
     hostname: schema-registry
     depends_on:
       - kafka-broker-1
