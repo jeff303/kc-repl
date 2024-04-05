@@ -2,7 +2,7 @@
   (:require [clojure.tools.build.api :as b]))
 
 (def lib 'net.clojars.jeff_evans/kc-repl-type-handler-protobuf)
-(def version (format "1.1.%s" (b/git-count-revs nil)))
+(def version (format "2.0.%s" (b/git-count-revs nil)))
 (def class-dir "target/classes")
 (def src-jar-file (format "target/%s-%s-protobuf-handler-src.jar" (name lib) version))
 (def uberjar-file (format "target/%s-%s-protobuf-handler.jar" (name lib) version))
