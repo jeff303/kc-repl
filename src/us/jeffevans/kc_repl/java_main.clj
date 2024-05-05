@@ -46,26 +46,44 @@
                       (update arg-nm-str conj reduced-arg))))
               {}
               arg-prms))))
+
 (defn parse-and-transform-input-line [input-line]
-  (let [arg-maps (insta/transform {:CMD_NAME (fn [cmd-nm]
-                                               {::command-name cmd-nm})
-                                   :SHORT_ARG arg->vals
-                                   :LONG_ARG arg->vals}
-                                  (java-cmd-args input-line))]
-    (let [merged-args (apply merge arg-maps)
-          cmd-nm      (::command-name merged-args)]
-      [cmd-nm (dissoc merged-args ::command-name)])))
+  (let [res (insta/transform {:CMD_NAME  (fn [cmd-nm]
+                                           {::command-name cmd-nm})
+                              :SHORT_ARG arg->vals
+                              :LONG_ARG  arg->vals}
+                             (java-cmd-args input-line))]
+    (if (insta/failure? res)
+      {::parse-error (insta/get-failure res)}
+      (let [merged-args (apply merge res)
+            cmd-nm      (::command-name merged-args)]
+        {::command-name cmd-nm, ::merged-args (dissoc merged-args ::command-name)}))))
+
 (defn- constant-seq [value]
   (cycle (repeat 1 value)))
 
 (defn parse-line-as-cli-args [input-line]
-  (let [[cmd-nm parsed-args] (parse-and-transform-input-line input-line)]
-    (reduce-kv (fn [acc arg-nm arg-vals]
-                 (if (empty? arg-vals)
-                   (conj acc arg-nm)
-                   (vec (concat acc (interleave (constant-seq arg-nm) arg-vals)))))
-               [cmd-nm]
-               parsed-args)))
+  (if (str/blank? input-line)
+    ;; treat a blank command like stop
+    {::arg-vector ["stop"]})
+  (let [{:keys [::parse-error ::command-name ::merged-args]} (parse-and-transform-input-line input-line)]
+    (if (some? parse-error)
+      {::parse-error parse-error}
+      {::arg-vector (reduce-kv (fn [acc arg-nm arg-vals]
+                                 (if (empty? arg-vals)
+                                   (conj acc arg-nm)
+                                   (vec (concat acc (interleave (constant-seq arg-nm) arg-vals)))))
+                               [command-name]
+                               merged-args)})))
+
+(defn- invalid-op-err [op]
+  (format "%s is not a valid command; must be one of:%n%s"
+          op
+          (str/join "\n" (reduce-kv (fn [acc k v]
+                                      (conj acc (format "%s (%s)"
+                                                        k (::kcr/description v))))
+                                    []
+                                    @#'kcr/java-cmds))))
 
 (defn -main
   "Entrypoint for the uberjar (Java) main.
@@ -80,34 +98,30 @@
     (fn [_]
       (let [continue? (atom true)]
         (while @continue?
-          (let [input       (get-input-line)
-                [op & args] (if (str/blank? input) ["stop"] (parse-line-as-cli-args input))
-                {:keys [::kcr/invoke-fn ::kcr/opts-spec ::kcr/print-offsets?]} (get @#'kcr/java-cmds op)]
-            (log/tracef "got input %s, op %s, args %s, opts-spec %s" input op (pr-str args) (pr-str opts-spec))
-            (println)
-            (if (nil? opts-spec)
-              (kcr/print-error-line (format "%s is not a valid command; must be one of:%n%s"
-                                            op
-                                            (str/join "\n" (reduce-kv (fn [acc k v]
-                                                                        (conj acc (format "%s (%s)"
-                                                                                          k (::kcr/description v))))
-                                                                      []
-                                                                      @#'kcr/java-cmds))))
-              (let [parsed (cli/parse-opts args opts-spec)]
-                (log/tracef "parsed: %s" (pr-str parsed))
-                (if (:errors parsed)
-                  (kcr/print-error-line (format "Error invoking %s command: %s%n%s"
-                                                op
-                                                (pr-str (:errors parsed))
-                                                (:summary parsed)))
-                  (when (fn? invoke-fn)
-                    (let [res (invoke-fn parsed)]
-                      (when (and res (not= res ::kcr/ok))
-                        (kcr/print-output-line (pr-str res)))
-                      (when print-offsets?
-                        (kcr/print-assignments* (kcr/current-assignments kcr/*client*))))))))
-
-            (reset! continue? (not= "stop" op))))
-        (when-not (nil? final-callback)
-          (final-callback kcr/*client*))))))
+          (let [input (get-input-line)
+                {:keys [::parse-error ::arg-vector]} (parse-line-as-cli-args input)]
+            (if (some? parse-error)
+              (kcr/print-error-line parse-error)
+              (let [[op & args] arg-vector
+                    {:keys [::kcr/invoke-fn ::kcr/opts-spec ::kcr/print-offsets?]} (get @#'kcr/java-cmds op)]
+                (log/tracef "got input %s, op %s, args %s, opts-spec %s" input op (pr-str args) (pr-str opts-spec))
+                (println)
+                (if (nil? opts-spec)
+                  (kcr/print-error-line (invalid-op-err op))
+                  (let [parsed (cli/parse-opts args opts-spec)]
+                    (log/tracef "parsed: %s" (pr-str parsed))
+                    (if (:errors parsed)
+                      (kcr/print-error-line (format "Error invoking %s command: %s%n%s"
+                                                    op
+                                                    (pr-str (:errors parsed))
+                                                    (:summary parsed)))
+                      (when (fn? invoke-fn)
+                        (let [res (invoke-fn parsed)]
+                          (when (and res (not= res ::kcr/ok))
+                            (kcr/print-output-line (pr-str res)))
+                          (when print-offsets?
+                            (kcr/print-assignments* (kcr/current-assignments kcr/*client*))))))))
+                (reset! continue? (not= "stop" op)))))))
+      (when-not (nil? final-callback)
+        (final-callback kcr/*client*)))))
 

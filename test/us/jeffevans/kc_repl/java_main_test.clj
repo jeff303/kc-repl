@@ -21,6 +21,7 @@
   (->clj [_ obj]
     obj)
   (set-config! [this k args]
+    (println "about to set config")
     (swap! (:k-to-args this) assoc k args)))
 
 (def ^:private ^:const test-type-handler-nm "test-set-config")
@@ -67,6 +68,7 @@
                       (fn [client]
                         (let [th (kcr/get-type-handler-by-name client test-type-handler-nm)]
                           (is (some? th))
+                          (println "about to run assertion")
                           (let [k-to-args (:k-to-args th)]
                             (is (= {"foo" ["bar1" "bar2" "bar3" "bar4"]} @k-to-args))))))
           (let [final-lines (line-gathering-fn)]
@@ -83,6 +85,3 @@
                     "test-topic:0 at 0" ; TODO: fix print-offsets? - it doesn't seem to work
                     "true"] ; TODO: don't return true from last fn (::stop probably)
                    final-lines))))))))
-
-
-;; TODO: add tests for the error messages generated from arg parsing (which can get hairy)
