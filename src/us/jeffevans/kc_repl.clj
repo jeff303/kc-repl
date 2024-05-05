@@ -9,6 +9,8 @@
     [clojure.spec.alpha :as s]
     [clojure.string :as str]
     [clojure.tools.logging :as log]
+    [instaparse.core :as insta]
+    [instaparse.failure :as instafail]
     [nrepl.cmdline :as n.c]
     [us.jeffevans.kc-repl.type-handlers :as th]
     [us.jeffevans.kc-repl.type-handler-load :as thl])
@@ -363,14 +365,18 @@
                                                                                ::poll-xf-args]}]
   (let [{:keys [::consumer-record-map-fn ::poll-xf-reducing-fn]} poll-xf-args]
     (assign-and-seek! consumer assignment-override active-assignments-atom)
-    (let [result (transduce (comp (kcr-xform active-assignments-atom consumer true)
-                                  (map consumer-record-map-fn)
-                                  (take num-msg))
-                            (if (fn? poll-xf-reducing-fn)
-                                poll-xf-reducing-fn
-                                default-poll-xf-reducing-fn)
-                            (poll-seq! active-assignments-atom consumer))]
-      {::result result, ::current-assignments (consumer-assigments consumer active-assignments-atom)})))
+    (try
+      (let [result (transduce (comp (kcr-xform active-assignments-atom consumer true)
+                                    (map consumer-record-map-fn)
+                                    (take num-msg))
+                              (if (fn? poll-xf-reducing-fn)
+                                  poll-xf-reducing-fn
+                                  default-poll-xf-reducing-fn)
+                              (poll-seq! active-assignments-atom consumer))]
+        {::result result, ::current-assignments (consumer-assigments consumer active-assignments-atom)})
+      (catch Exception ^Exception e
+        {::error (.getMessage e)}))))
+
 
 (defn- run-consumer-loop!
   "Runs the main KafkaConsumer loop.  Runs forever until a ::stop message is received.
@@ -415,8 +421,10 @@
                                 ::active-assignments-atom active-assignments-atom,
                                 ::assignment-override     temp-assignment
                                 ::poll-xf-args            poll-xf-args})
-        (let [{:keys [::result]} (a/<! from-consumer-chan)]
+        (let [{:keys [::result ::error]} (a/<! from-consumer-chan)]
           (reset! last-read-records-atom result)
+          (if (some? error)
+            (log/errorf "%s" error))
           result))
       (a/<!!)))
 
@@ -490,7 +498,9 @@
 
 (defn print-error-line [err]
   (when err
-    (print-output-line (str "ERROR: " err))))
+    (if (insta/failure? err)
+      (instafail/pprint-failure err)
+      (print-output-line (str "ERROR: " err)))))
 
 (defn print-assignments*
   [current-assignments]

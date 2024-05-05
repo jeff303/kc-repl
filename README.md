@@ -211,6 +211,19 @@ Refer to the `avro` and `protobuf` implementations under `type-handlers` for ref
 ### Testing
 `clojure -J-Dclojure.core.async.pool-size=1 -X:test`
 
+#### Testing of Type Handlers
+
+To test the type handlers (Avro and Protobuf), it's necessary to run the `docker-compose.yml` file
+that is underneath the `type-handlers/test-resources` directory, to bring up Kafka, Zookeeper, and
+Schema Registry containers.
+
+```shell
+cd type-handlers/test-resources
+docker compose up
+```
+
+Once these are running, you can execute the tests in the REPL or from the command line.
+
 ### Roadmap and Bugs
 
 Bugs and enhancement requests will be tracked in the GitHub project (via issues).
@@ -223,6 +236,6 @@ Bugs and enhancement requests will be tracked in the GitHub project (via issues)
 
 ## License
 
-Copyright © 2022 Jeff Evans
+Copyright © 2022-2024 Jeff Evans
 
 Distributed under the Eclipse Public License version 1.0.
